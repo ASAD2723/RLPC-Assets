@@ -9,7 +9,6 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "./components/ui/alert-dialog";
 import { Plus, ChevronLeft, ChevronRight, Boxes } from "lucide-react";
-import { SummaryCards } from "./components/SummaryCards";
 import { FilterBar } from "./components/FilterBar";
 import { PurchaseTable } from "./components/PurchaseTable";
 import { PurchaseForm } from "./components/PurchaseForm";
@@ -26,7 +25,6 @@ function App() {
   const [debouncedFilters, setDebouncedFilters] = useState(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
   const [data, setData] = useState({ items: [], total: 0 });
-  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [formOpen, setFormOpen] = useState(false);
@@ -49,12 +47,8 @@ function App() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [list, s] = await Promise.all([
-        api.listPurchases(debouncedFilters, page, PAGE_SIZE),
-        api.getStats(debouncedFilters),
-      ]);
+      const list = await api.listPurchases(debouncedFilters, page, PAGE_SIZE);
       setData({ items: list.items, total: list.total });
-      setStats(s);
     } catch (e) {
       toast.error("Failed to load records");
     } finally {
@@ -155,10 +149,6 @@ function App() {
       </header>
 
       <main className="max-w-[1600px] mx-auto px-4 md:px-8 py-6 space-y-8">
-        <section>
-          <SummaryCards stats={stats} loading={loading && !stats} />
-        </section>
-
         <section className="rounded-md border border-border bg-card p-4 md:p-6 space-y-5">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-xl font-bold tracking-tight">Purchase Records</h2>
