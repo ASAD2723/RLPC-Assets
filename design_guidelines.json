@@ -1,0 +1,98 @@
+{
+  "theme": "light_and_dark_toggle",
+  "typography": {
+    "headings": {
+      "font_family": "Cabinet Grotesk, sans-serif",
+      "weights": ["500", "700", "900"],
+      "instructions": "Use for the Dashboard Title (RLPC IT Assets Records), Summary Card Values, and Modal Titles. Keep line-height tight (leading-none) and tracking tight for large numbers."
+    },
+    "body": {
+      "font_family": "IBM Plex Sans, sans-serif",
+      "weights": ["400", "500", "600"],
+      "instructions": "Use for all Table Data, Form Labels, and general UI text. Provides a clean, highly legible, structured feel ideal for dense data tracking."
+    }
+  },
+  "colors": {
+    "archetype": "Swiss & High-Contrast (Authority, Clarity, Truth)",
+    "light_mode": {
+      "background": "#F7F7F8",
+      "surface": "#FFFFFF",
+      "primary": "#0A0A0A",
+      "secondary": "#6B7280",
+      "accent": "#0055FF",
+      "border": "#E5E7EB",
+      "danger": "#DC2626",
+      "success": "#16A34A"
+    },
+    "dark_mode": {
+      "background": "#050505",
+      "surface": "#121212",
+      "primary": "#FFFFFF",
+      "secondary": "#A1A1AA",
+      "accent": "#3B82F6",
+      "border": "#27272A",
+      "danger": "#EF4444",
+      "success": "#22C55E"
+    },
+    "instructions": "Color is function only. 95% of the UI should be monochrome. Color exists to guide action (Blue for primary CTAs/Exports, Green for Approved, Red for Delete/Warning)."
+  },
+  "visual_enhancers": {
+    "shadows": "Replace soft shadows with 1px solid strokes or subtle drop-shadows only on hover states for table rows.",
+    "borders": "Visible grid structures. Use 1px borders on summary cards and table cells to separate data clearly.",
+    "radius": "Subtle roundness. Max 8px border-radius (`rounded-md`). Keep it sharp and technical.",
+    "glassmorphism": "Avoid in data-heavy areas. NEVER use a fully transparent background in headers or dropdowns. If a sticky header is used, use a solid color (`bg-white` or `bg-background`) or heavy backdrop blur with an opaque tint (`bg-white/80` with `backdrop-blur-xl`) and a hard bottom border."
+  },
+  "components": [
+    {
+      "name": "Dashboard Summary Cards",
+      "instructions": "Use MODE B (High Density Grid). Base grid `grid-cols-2 lg:grid-cols-5`. Tight gap (`gap-4`). Label at the top (`text-sm text-muted-foreground`), metric massive (`text-3xl font-bold tracking-tight`). Ensure every card has a `data-testid`."
+    },
+    {
+      "name": "Purchase Entry Form (Modal/Drawer)",
+      "instructions": "Use Shadcn `Dialog`. Forms must use Shadcn `Form`, `Input`, `Select`, `Checkbox`. Auto-recorded date should be clearly disabled/read-only. Focus states must have a sharp 2px ring."
+    },
+    {
+      "name": "Records Table",
+      "instructions": "Shadcn `Table` component. MUST have a sticky header (`sticky top-0 z-10 bg-background`). Dense padding (`p-2` or `p-3` per cell). Pagination (50/page) below the table. Empty states must be elegantly handled with an illustration or clear text."
+    },
+    {
+      "name": "Search and Multi-Filter Bar",
+      "instructions": "Flex/Grid layout above the table. Search input (Employee ID/Name) paired with Shadcn `Select` for (Purchase Of, Mode of Payment, Payment By, Approved status). Date range filter using Shadcn `Popover` and `Calendar`."
+    },
+    {
+      "name": "Export & Action Buttons",
+      "instructions": "Right-aligned in the filter bar. Distinct buttons for XLSX and PDF export. Use appropriate icons. Edit/Delete actions in the table must use Shadcn `DropdownMenu` or icon buttons with `Tooltip`."
+    }
+  ],
+  "grids": {
+    "dashboard_grid": "MODE B (High Density Grid). Base grid: `grid-cols-1 md:grid-cols-3 lg:grid-cols-5`. Gap: `gap-4` or `gap-6`. Every pixel must be utilized."
+  },
+  "layouts": {
+    "general": "Mobile-first responsive. Use a max-width container (`max-w-[1600px] mx-auto`) for ultra-wide screens to keep table data legible. `p-4 md:p-8` container padding.",
+    "header": "Always visible navigation bar with 'RLPC IT Assets Records' branding, solid background, and hard bottom border."
+  },
+  "motion": {
+    "instructions": "Minimalist and precise. Table rows slightly change color on hover (`hover:bg-muted/50`). Buttons should have a quick scale/click effect (`active:scale-95 transition-transform`). Exclude transforms from universal transitions to prevent breaking animations."
+  },
+  "accessibility": {
+    "instructions": "All interactive elements (buttons, links, inputs, dialogs) MUST have `data-testid` attributes (e.g., `data-testid=\"submit-purchase-btn\"`). Form inputs must have labels. Focus states must have higher contrast than default state."
+  },
+  "media": {
+    "image_urls": [
+      {
+        "url": "https://images.unsplash.com/photo-1558591710-4b4a1ae0f04d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzF8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMG1pbmltYWwlMjB0ZWNoJTIwdGV4dHVyZXxlbnwwfHx8fDE3OTA1MjAzMzZ8MA&ixlib=rb-4.1.0&q=85",
+        "category": "Header Texture / Background",
+        "description": "Subtle white abstract wavy lines texture. Can be used at extremely low opacity (5%) in the header or as an empty-state illustration background to prevent the app from looking entirely flat."
+      }
+    ],
+    "instructions": "Use the provided image URL purely as a subtle texture. The primary focus is data readability. Use Lucide React icons for all UI iconography (search, filter, export, edit, trash, check)."
+  },
+  "3d_libraries": {
+    "instructions": "Not required. Keep the UI lightweight, 2D, and focused on data grid performance."
+  },
+  "instructions_to_main_agent": {
+    "setup": "Install `lucide-react`, `sonner` for toast notifications, and `date-fns` for date formatting. Use standard Shadcn components. Install `xlsx` and `jspdf` / `jspdf-autotable` for export functionalities.",
+    "execution": "Develop the 'RLPC IT Assets Records' dashboard using React `.js` files (NOT `.tsx` - adjust Shadcn CLI to output JavaScript). Build the 5 summary cards: Total Purchases, Approved Purchases, Pending Approval, Mobile Purchases, Tech Device Purchases. The purchase entry form MUST lock the date as read-only. Implement a data table with pagination (50 items/page), sticky headers, search, multi-filter, and row-level Edit/Delete dialogs. Ensure XLSX and PDF exports respect the currently filtered data."
+  },
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": "Do not center align the app container. Create depth through layered design elements with z-index hierarchy. Never use AI assistant Emoji characters for icons. Every interaction needs micro-animations - hover states, transitions (apply specifically, DO NOT use `transition: all`). Use sonner for toasts. Prioritize Shadcn components. The design must not look like generic 'AI slop'. Use crisp 1px borders, precise padding, and strict grid alignments. DO NOT use complete transparent backgrounds for headers or overlays. ALL interactive and key informational elements MUST include a `data-testid` attribute (kebab-case, role-based)."
+}
