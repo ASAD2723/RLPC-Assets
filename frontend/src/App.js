@@ -8,10 +8,11 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "./components/ui/alert-dialog";
-import { Plus, ChevronLeft, ChevronRight, Boxes } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Boxes, Upload } from "lucide-react";
 import { FilterBar } from "./components/FilterBar";
 import { PurchaseTable } from "./components/PurchaseTable";
 import { PurchaseForm } from "./components/PurchaseForm";
+import { ImportDialog } from "./components/ImportDialog";
 import * as api from "./lib/api";
 
 const PAGE_SIZE = 50;
@@ -28,6 +29,7 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -141,10 +143,16 @@ function App() {
               <p className="text-xs text-muted-foreground mt-0.5">Employee purchase management</p>
             </div>
           </div>
-          <Button onClick={openAdd} data-testid="add-purchase-btn"
-            className="bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent))]/90 active:scale-95 transition-transform">
-            <Plus className="h-4 w-4 mr-2" /> Add Purchase
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)} data-testid="import-csv-btn"
+              className="active:scale-95 transition-transform">
+              <Upload className="h-4 w-4 mr-2" /> Import CSV
+            </Button>
+            <Button onClick={openAdd} data-testid="add-purchase-btn"
+              className="bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent))]/90 active:scale-95 transition-transform">
+              <Plus className="h-4 w-4 mr-2" /> Add Purchase
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -196,6 +204,11 @@ function App() {
       <PurchaseForm
         open={formOpen} onOpenChange={(o) => { setFormOpen(o); if (!o) setEditing(null); }}
         onSubmit={handleSubmit} config={config} editing={editing} submitting={submitting}
+      />
+
+      <ImportDialog
+        open={importOpen} onOpenChange={setImportOpen}
+        onImported={() => { setPage(1); refresh(); }}
       />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>

@@ -1,10 +1,11 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import io
+import csv
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, BeforeValidator
@@ -336,6 +337,130 @@ async def export_pdf(
         buf, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
+
+
+HEADER_MAP = {
+    "employee id": "employee_id",
+    "employee_id": "employee_id",
+    "employee name": "employee_name",
+    "employee_name": "employee_name",
+    "purchase of": "purchase_type",
+    "purchase type": "purchase_type",
+    "purchase_type": "purchase_type",
+    "mode of payment": "payment_mode",
+    "payment mode": "payment_mode",
+    "payment_mode": "payment_mode",
+    "payment by": "payment_by",
+    "payment_by": "payment_by",
+    "approved by business manager": "approved",
+    "approved": "approved",
+    "business_manager_approved": "approved",
+    "date": "date",
+    "purchase date": "date",
+    "purchase_date": "date",
+}
+
+TRUE_VALUES = {"true", "yes", "1", "approved", "y", "t"}
+
+
+def _parse_date(raw: str) -> Optional[str]:
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw).astimezone(timezone.utc).isoformat()
+    except Exception:
+        pass
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"):
+        try:
+            dt = datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+            return dt.isoformat()
+        except Exception:
+            continue
+    return None
+
+
+@api_router.post("/purchases/import")
+async def import_purchases(file: UploadFile = File(...)):
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=422, detail="Please upload a .csv file")
+
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(status_code=422, detail="CSV file is empty or has no header row")
+
+    field_lookup = {}
+    for h in reader.fieldnames:
+        key = HEADER_MAP.get((h or "").strip().lower())
+        if key:
+            field_lookup[h] = key
+
+    required = {"employee_id", "employee_name", "purchase_type", "payment_mode", "payment_by"}
+    missing_headers = required - set(field_lookup.values())
+    if missing_headers:
+        pretty = {
+            "employee_id": "Employee ID", "employee_name": "Employee Name",
+            "purchase_type": "Purchase Of", "payment_mode": "Mode of Payment",
+            "payment_by": "Payment By",
+        }
+        raise HTTPException(
+            status_code=422,
+            detail=f"Missing required columns: {', '.join(pretty[m] for m in missing_headers)}",
+        )
+
+    docs = []
+    errors = []
+    row_num = 1
+    for row in reader:
+        row_num += 1
+        rec = {"business_manager_approved": False}
+        purchase_date = None
+        for header, key in field_lookup.items():
+            val = (row.get(header) or "").strip()
+            if key == "approved":
+                rec["business_manager_approved"] = val.lower() in TRUE_VALUES
+            elif key == "date":
+                if val:
+                    purchase_date = _parse_date(val)
+                    if purchase_date is None:
+                        errors.append(f"Row {row_num}: could not parse date '{val}'")
+            else:
+                rec[key] = val
+
+        row_errors = []
+        for f in ("employee_id", "employee_name"):
+            if not rec.get(f):
+                row_errors.append(f.replace("_", " ").title())
+        if rec.get("purchase_type") not in PURCHASE_TYPES:
+            row_errors.append(f"invalid Purchase Of '{rec.get('purchase_type', '')}'")
+        if rec.get("payment_mode") not in PAYMENT_MODES:
+            row_errors.append(f"invalid Mode of Payment '{rec.get('payment_mode', '')}'")
+        if rec.get("payment_by") not in PAYMENT_BY:
+            row_errors.append(f"invalid Payment By '{rec.get('payment_by', '')}'")
+
+        if row_errors:
+            errors.append(f"Row {row_num}: {', '.join(row_errors)}")
+            continue
+
+        now = datetime.now(timezone.utc).isoformat()
+        obj = Purchase(
+            employee_id=rec["employee_id"], employee_name=rec["employee_name"],
+            purchase_type=rec["purchase_type"], payment_mode=rec["payment_mode"],
+            payment_by=rec["payment_by"], business_manager_approved=rec["business_manager_approved"],
+            purchase_date=purchase_date or now, created_at=now, updated_at=now,
+        )
+        docs.append(obj.model_dump())
+
+    if docs:
+        await db.purchases.insert_many(docs)
+
+    return {"imported": len(docs), "failed": len(errors), "errors": errors[:50]}
 
 
 app.include_router(api_router)
