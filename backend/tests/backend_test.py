@@ -116,7 +116,7 @@ class TestCreate:
 # ----- Pagination -----
 class TestPagination:
     @pytest.fixture(scope="class")
-    def seeded(self, session):
+    def seeded(self, session, auth_session):
         ids = []
         for i in range(55):
             p = _payload(emp_id=f"TEST_PG{i:03d}", name=f"TEST_PgUser{i}")
@@ -125,7 +125,7 @@ class TestPagination:
             ids.append(r.json()["id"])
         yield ids
         for pid in ids:
-            session.delete(f"{API}/purchases/{pid}", timeout=10)
+            auth_session.delete(f"{API}/purchases/{pid}", timeout=10)
 
     def test_page1_has_50(self, session, seeded):
         r = session.get(f"{API}/purchases", params={"search": "TEST_PG", "page": 1, "page_size": 50}, timeout=15)
@@ -246,7 +246,7 @@ class TestStats:
             assert d["mobile"] == 2
         finally:
             for pid in ids:
-                session.delete(f"{API}/purchases/{pid}", timeout=10)
+                auth_session.delete(f"{API}/purchases/{pid}", timeout=10)
 
 
 # ----- Update -----
@@ -268,29 +268,29 @@ class TestUpdate:
             assert d["employee_name"] == "TEST_Updated"
             assert d["purchase_type"] == "Tech Device"
             assert d["business_manager_approved"] is True
-            assert d["purchase_date"] == orig_date  # locked
+            assert d["purchase_date"] == orig_date  # unchanged when not sent
             assert d["updated_at"] != orig_updated
         finally:
-            session.delete(f"{API}/purchases/{pid}", timeout=10)
+            auth_session.delete(f"{API}/purchases/{pid}", timeout=10)
 
-    def test_update_unknown_returns_404(self, session):
-        r = session.put(f"{API}/purchases/nope-xyz", json=_payload(), timeout=10)
+    def test_update_unknown_returns_404(self, auth_session):
+        r = auth_session.put(f"{API}/purchases/nope-xyz", json=_payload(), timeout=10)
         assert r.status_code == 404
 
 
 # ----- Delete -----
 class TestDelete:
-    def test_delete_success(self, session):
+    def test_delete_success(self, session, auth_session):
         r = session.post(f"{API}/purchases", json=_payload(emp_id="TEST_DEL1"), timeout=10)
         pid = r.json()["id"]
-        r2 = session.delete(f"{API}/purchases/{pid}", timeout=10)
+        r2 = auth_session.delete(f"{API}/purchases/{pid}", timeout=10)
         assert r2.status_code == 200
         # Verify not found
-        r3 = session.put(f"{API}/purchases/{pid}", json=_payload(), timeout=10)
+        r3 = auth_session.put(f"{API}/purchases/{pid}", json=_payload(), timeout=10)
         assert r3.status_code == 404
 
-    def test_delete_unknown_returns_404(self, session):
-        r = session.delete(f"{API}/purchases/nonexistent-id", timeout=10)
+    def test_delete_unknown_returns_404(self, auth_session):
+        r = auth_session.delete(f"{API}/purchases/nonexistent-id", timeout=10)
         assert r.status_code == 404
 
 

@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 4 verified: (1) two-user login ('158' and 'IT admin'), (2) manual purchase_date on create/update, (3) PUT/DELETE now require auth (401 otherwise), (4) approval still gated. Backend: 63/63 pytest tests pass (11 new cases in test_manual_date_and_auth.py + updated regression tests in backend_test.py and test_auth_bill.py to send Bearer token for PUT/DELETE). Frontend E2E via Playwright covered all requested flows: logged-out Add form shows required manual date picker defaulting to today, chosen date persists on the created row (Jan 15, 2026), row shows 'Login to edit' (readonly-{id}) and no edit/delete buttons; login as 'IT admin' reveals header username, select-all checkbox, per-row edit/delete; edit changes purchase_date (2026-03-20) and persists; approval toggle works; delete via confirm dialog works; logout hides edit/delete and restores readonly labels; login as '158' also works.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_auth_bill.py",
+    "/app/backend/tests/test_bulk_approval.py",
+    "/app/backend/tests/test_manual_date_and_auth.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Optional cleanup: preview DB has accumulated many TEST_* records from prior iterations (~50). Consider a cleanup script or DELETE endpoint for TEST_ prefix (would need auth)."
+  ],
+  "critical_code_review_comments": [
+    "Auth model is simple hardcoded users via env; JWT is HS256 with a fixed secret. Fine for internal RLPC use case but note: brute-force is not rate-limited and JWT_SECRET must be rotated if leaked.",
+    "AUTH_USERS built once at module import — adding a third user in .env requires a backend restart (documented supervisor behavior).",
+    "create_purchase accepts purchase_date as free-form string (no validation). If a client sends a malformed value (e.g. 'yesterday'), it will be stored verbatim and later sorts/date filters could misbehave. Consider validating with datetime.fromisoformat() in the endpoint.",
+    "update_purchase: when purchase_date is not provided in body it correctly preserves existing value (pop returns None, guarded by 'if purchase_date'). Verified by regression test.",
+    "PurchaseUpdate inherits all required fields from PurchaseBase — clients must resend the full record on edit. That's how the UI works today, but a PATCH-style partial update would be more idiomatic.",
+    "delete_purchase requires auth but does not check that the record exists before the DELETE — MongoDB update returns deleted_count=0 which maps to 404; correct behavior.",
+    "server.py still uses deprecated @app.on_event startup/shutdown handlers (carry-over)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_auth_bill.py",
+    "/app/backend/tests/test_manual_date_and_auth.py"
+  ],
+  "success_rate": { "backend": "100% (63/63)", "frontend": "100% (all requested flows verified)" },
+  "test_credentials": "Users: '158' / 'Rlpc_974' and 'IT admin' / 'Rlpc_974' (space in username). Login endpoint: POST /api/auth/login, returns {token, username}. Bearer token in Authorization header.",
+  "seed_data_creation": "Each test creates TEST_* prefixed records and deletes them via authenticated session in teardown. UI E2E created one TEST_UI4_<ts>_ record and cleaned it up via the app's own delete flow.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend tests split across 4 files under /app/backend/tests/: backend_test.py (CRUD/filters/exports — PUT/DELETE now use auth_session), test_auth_bill.py (bill upload/download, Safety Shoes, approval gating: PUT without token now returns 401 not 403), test_bulk_approval.py (bulk endpoint), test_manual_date_and_auth.py (new: two-user login, manual date, PUT/DELETE 401 without token). Run: pytest /app/backend/tests/ -v. Note the username 'IT admin' contains a space. Manual date input (data-testid=input-purchase-date) is type=date and stored as `${date}T00:00:00`; table renders via toLocaleString so 2026-01-15T00:00:00 appears as 'Jan 15, 2026, 12:00 AM'."
+}

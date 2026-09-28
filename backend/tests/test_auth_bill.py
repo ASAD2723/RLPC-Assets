@@ -100,14 +100,14 @@ class TestApprovalEnforcement:
         assert r.json()["purchase_type"] == "Safety Shoes"
         session.delete(f"{API}/purchases/{r.json()['id']}", timeout=10)
 
-    def test_update_change_approval_without_token_403(self, session, token):
+    def test_update_change_approval_without_token_401(self, session, token):
         # create unapproved
         r = session.post(f"{API}/purchases", json=_payload("TEST_UPA1", approved=False), timeout=10)
         pid = r.json()["id"]
         try:
-            # try to change to approved without token
+            # PUT without token now requires auth -> 401
             r2 = session.put(f"{API}/purchases/{pid}", json=_payload("TEST_UPA1", approved=True), timeout=10)
-            assert r2.status_code == 403
+            assert r2.status_code == 401
             # with token succeeds
             r3 = requests.put(
                 f"{API}/purchases/{pid}",
@@ -118,22 +118,26 @@ class TestApprovalEnforcement:
             assert r3.status_code == 200
             assert r3.json()["business_manager_approved"] is True
         finally:
-            session.delete(f"{API}/purchases/{pid}", timeout=10)
+            requests.delete(
+                f"{API}/purchases/{pid}",
+                headers={"Authorization": f"Bearer {token}"}, timeout=10,
+            )
 
-    def test_update_non_approval_field_without_token(self, session):
+    def test_update_non_approval_field_without_token_401(self, session, token):
         # create unapproved
         r = session.post(f"{API}/purchases", json=_payload("TEST_UPA2", approved=False), timeout=10)
         pid = r.json()["id"]
-        orig_date = r.json()["purchase_date"]
         try:
             body = _payload("TEST_UPA2", approved=False)
             body["employee_name"] = "TEST_NewName"
+            # iteration 4: any PUT requires auth
             r2 = session.put(f"{API}/purchases/{pid}", json=body, timeout=10)
-            assert r2.status_code == 200, r2.text
-            assert r2.json()["employee_name"] == "TEST_NewName"
-            assert r2.json()["purchase_date"] == orig_date  # locked
+            assert r2.status_code == 401
         finally:
-            session.delete(f"{API}/purchases/{pid}", timeout=10)
+            requests.delete(
+                f"{API}/purchases/{pid}",
+                headers={"Authorization": f"Bearer {token}"}, timeout=10,
+            )
 
 
 # ----- Bill upload -----

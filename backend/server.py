@@ -163,6 +163,15 @@ def _validate_enums(p: PurchaseBase):
         raise HTTPException(status_code=422, detail="Invalid Payment By value")
 
 
+def _normalize_date(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value).isoformat()
+    except Exception:
+        raise HTTPException(status_code=422, detail="Invalid purchase date")
+
+
 def _build_query(search, purchase_type, payment_mode, payment_by, approved, date_from, date_to):
     q = {}
     if search:
@@ -250,7 +259,7 @@ async def create_purchase(payload: PurchaseCreate, user: Optional[str] = Depends
         raise HTTPException(status_code=403, detail="Only an authorized user can mark a record as approved")
     now = datetime.now(timezone.utc).isoformat()
     data = payload.model_dump()
-    purchase_date = data.pop("purchase_date", None) or now
+    purchase_date = _normalize_date(data.pop("purchase_date", None)) or now
     obj = Purchase(**data, purchase_date=purchase_date, created_at=now, updated_at=now)
     await db.purchases.insert_one(obj.model_dump())
     return obj
@@ -307,7 +316,7 @@ async def update_purchase(purchase_id: str, payload: PurchaseUpdate, user: str =
     if not existing:
         raise HTTPException(status_code=404, detail="Purchase record not found")
     update_doc = payload.model_dump()
-    purchase_date = update_doc.pop("purchase_date", None)
+    purchase_date = _normalize_date(update_doc.pop("purchase_date", None))
     if purchase_date:
         update_doc["purchase_date"] = purchase_date
     update_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
