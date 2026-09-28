@@ -1,5 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, APIRouter, HTTPException, Query, UploadFile, File, Header, Depends
+from fastapi.responses import StreamingResponse, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -7,12 +7,14 @@ import os
 import io
 import csv
 import logging
+import requests
+import jwt
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, BeforeValidator
 from typing import List, Optional, Annotated
 from bson import ObjectId
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -33,12 +35,79 @@ app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
 ORG_NAME = "RLPC IT Assets Records"
-PURCHASE_TYPES = ["Mobile Purchase", "Tech Device"]
+PURCHASE_TYPES = ["Mobile Purchase", "Tech Device", "Safety Shoes"]
 PAYMENT_MODES = ["Cash", "Credit Card", "Bank Transfer"]
 PAYMENT_BY = ["Jogy Joseph", "Mohammad Omer", "Muhammad Khaleel", "Muhammad Abdullah"]
 
 COLUMNS = ["Employee ID", "Employee Name", "Purchase Of", "Mode of Payment",
            "Payment By", "Approved by Business Manager", "Date"]
+
+# ----- Auth (hardcoded single user) -----
+JWT_SECRET = os.environ["JWT_SECRET"]
+JWT_ALG = "HS256"
+AUTH_USERNAME = os.environ["AUTH_USERNAME"]
+AUTH_PASSWORD = os.environ["AUTH_PASSWORD"]
+
+
+def _create_token(username: str) -> str:
+    payload = {"sub": username, "exp": datetime.now(timezone.utc) + timedelta(days=7)}
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+
+
+async def optional_user(authorization: Optional[str] = Header(None)) -> Optional[str]:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    try:
+        payload = jwt.decode(authorization[7:], JWT_SECRET, algorithms=[JWT_ALG])
+        return payload.get("sub")
+    except Exception:
+        return None
+
+
+# ----- Object storage (Emergent managed) -----
+STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
+STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
+EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+APP_NAME = "rlpc-records"
+storage_key = None
+
+
+def init_storage(force: bool = False):
+    global storage_key
+    if storage_key and not force:
+        return storage_key
+    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
+    resp.raise_for_status()
+    storage_key = resp.json()["storage_key"]
+    return storage_key
+
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    key = init_storage()
+    resp = requests.put(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key, "Content-Type": content_type},
+        data=data, timeout=120,
+    )
+    if resp.status_code == 404:
+        key = init_storage(force=True)
+        resp = requests.put(
+            f"{STORAGE_URL}/objects/{path}",
+            headers={"X-Storage-Key": key, "Content-Type": content_type},
+            data=data, timeout=120,
+        )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_object(path: str):
+    key = init_storage()
+    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
+    if resp.status_code == 404:
+        key = init_storage(force=True)
+        resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
 
 def _validate_object_id(v):
@@ -58,6 +127,8 @@ class PurchaseBase(BaseModel):
     payment_mode: str
     payment_by: str
     business_manager_approved: bool = False
+    bill_path: Optional[str] = None
+    bill_filename: Optional[str] = None
 
 
 class PurchaseCreate(PurchaseBase):
@@ -115,10 +186,29 @@ async def _fetch_filtered(query):
     return docs
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
 # ----- Routes -----
 @api_router.get("/")
 async def root():
     return {"message": "RLPC IT Assets Records API", "org": ORG_NAME}
+
+
+@api_router.post("/auth/login")
+async def login(body: LoginRequest):
+    if body.username != AUTH_USERNAME or body.password != AUTH_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    return {"token": _create_token(body.username), "username": body.username}
+
+
+@api_router.get("/auth/me")
+async def auth_me(user: Optional[str] = Depends(optional_user)):
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"username": user}
 
 
 @api_router.get("/config")
@@ -131,9 +221,26 @@ async def get_config():
     }
 
 
+@api_router.post("/purchases/upload-bill")
+async def upload_bill(file: UploadFile = File(...)):
+    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "bin"
+    path = f"{APP_NAME}/bills/{uuid.uuid4()}.{ext}"
+    data = await file.read()
+    result = put_object(path, data, file.content_type or "application/octet-stream")
+    return {"bill_path": result["path"], "bill_filename": file.filename}
+
+
+@api_router.get("/purchases/bill/{path:path}")
+async def get_bill(path: str):
+    data, content_type = get_object(path)
+    return Response(content=data, media_type=content_type)
+
+
 @api_router.post("/purchases", response_model=Purchase, status_code=201)
-async def create_purchase(payload: PurchaseCreate):
+async def create_purchase(payload: PurchaseCreate, user: Optional[str] = Depends(optional_user)):
     _validate_enums(payload)
+    if payload.business_manager_approved and not user:
+        raise HTTPException(status_code=403, detail="Only an authorized user can mark a record as approved")
     now = datetime.now(timezone.utc).isoformat()
     obj = Purchase(**payload.model_dump(), purchase_date=now, created_at=now, updated_at=now)
     await db.purchases.insert_one(obj.model_dump())
@@ -185,11 +292,13 @@ async def stats(
 
 
 @api_router.put("/purchases/{purchase_id}", response_model=Purchase)
-async def update_purchase(purchase_id: str, payload: PurchaseUpdate):
+async def update_purchase(purchase_id: str, payload: PurchaseUpdate, user: Optional[str] = Depends(optional_user)):
     _validate_enums(payload)
     existing = await db.purchases.find_one({"id": purchase_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Purchase record not found")
+    if bool(payload.business_manager_approved) != bool(existing.get("business_manager_approved")) and not user:
+        raise HTTPException(status_code=403, detail="Only an authorized user can change the approval status")
     update_doc = payload.model_dump()
     update_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.purchases.update_one({"id": purchase_id}, {"$set": update_doc})
@@ -475,6 +584,15 @@ app.add_middleware(
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+@app.on_event("startup")
+async def _startup():
+    try:
+        init_storage()
+        logger.info("Object storage initialized")
+    except Exception as e:
+        logger.error(f"Storage init failed: {e}")
 
 
 @app.on_event("shutdown")

@@ -18,6 +18,24 @@ export const buildParams = (filters) => {
 
 export const getConfig = () => axios.get(`${API}/config`).then((r) => r.data);
 
+export const setAuthToken = (token) => {
+  if (token) axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+  else delete axios.defaults.headers.common["Authorization"];
+};
+
+export const login = (username, password) =>
+  axios.post(`${API}/auth/login`, { username, password }).then((r) => r.data);
+
+export const getMe = () => axios.get(`${API}/auth/me`).then((r) => r.data);
+
+export const uploadBill = (file) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  return axios.post(`${API}/purchases/upload-bill`, fd, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
+};
+
+export const billUrl = (path) => `${API}/purchases/bill/${path}`;
+
 export const listPurchases = (filters, page, pageSize) =>
   axios.get(`${API}/purchases`, { params: { ...buildParams(filters), page, page_size: pageSize } }).then((r) => r.data);
 

@@ -5,7 +5,8 @@ import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Lock } from "lucide-react";
+import { Lock, Paperclip, X, FileCheck } from "lucide-react";
+import { billUrl } from "../lib/api";
 
 const EMPTY = {
   employee_id: "",
@@ -16,9 +17,11 @@ const EMPTY = {
   business_manager_approved: false,
 };
 
-export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, submitting }) => {
+export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, submitting, canApprove }) => {
   const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState({});
+  const [billFile, setBillFile] = useState(null);
+  const [existingBill, setExistingBill] = useState(null);
 
   useEffect(() => {
     if (open) {
@@ -35,6 +38,8 @@ export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, su
         setForm(EMPTY);
       }
       setErrors({});
+      setBillFile(null);
+      setExistingBill(editing?.bill_path ? { bill_path: editing.bill_path, bill_filename: editing.bill_filename } : null);
     }
   }, [open, editing]);
 
@@ -53,7 +58,16 @@ export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, su
 
   const handleSubmit = () => {
     if (!validate()) return;
-    onSubmit({ ...form, employee_id: form.employee_id.trim(), employee_name: form.employee_name.trim() });
+    onSubmit(
+      {
+        ...form,
+        employee_id: form.employee_id.trim(),
+        employee_name: form.employee_name.trim(),
+        bill_path: existingBill?.bill_path || null,
+        bill_filename: existingBill?.bill_filename || null,
+      },
+      billFile,
+    );
   };
 
   const fmtDate = (iso) => {
@@ -128,10 +142,40 @@ export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, su
             </div>
           </div>
 
-          <div className="flex items-center gap-3 rounded-md border border-border bg-secondary/50 p-3">
+          <div className={`flex items-center gap-3 rounded-md border p-3 ${canApprove ? "border-border bg-secondary/50" : "border-dashed border-border bg-muted/40"}`}>
             <Checkbox id="approved" data-testid="checkbox-approved" checked={form.business_manager_approved}
+              disabled={!canApprove}
               onCheckedChange={(v) => set("business_manager_approved", !!v)} />
-            <Label htmlFor="approved" className="cursor-pointer font-medium">Approved by Business Manager</Label>
+            <div className="flex flex-col">
+              <Label htmlFor="approved" className={`font-medium ${canApprove ? "cursor-pointer" : "cursor-not-allowed text-muted-foreground"}`}>
+                Approved by Business Manager
+              </Label>
+              {!canApprove && (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5" data-testid="approval-locked-hint">
+                  <Lock className="h-3 w-3" /> Log in as the authorized user to change approval
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="flex items-center gap-1.5"><Paperclip className="h-3.5 w-3.5" /> Bill / Receipt <span className="text-xs text-muted-foreground">(optional)</span></Label>
+            {billFile ? (
+              <div className="flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm" data-testid="bill-selected">
+                <span className="flex items-center gap-2 truncate"><FileCheck className="h-4 w-4 text-[hsl(var(--success))]" /> {billFile.name}</span>
+                <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => setBillFile(null)} data-testid="remove-bill-btn"><X className="h-4 w-4" /></Button>
+              </div>
+            ) : existingBill ? (
+              <div className="flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm" data-testid="bill-existing">
+                <a href={billUrl(existingBill.bill_path)} target="_blank" rel="noreferrer" className="flex items-center gap-2 truncate text-[hsl(var(--accent))] hover:underline">
+                  <FileCheck className="h-4 w-4" /> {existingBill.bill_filename || "View current bill"}
+                </a>
+                <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => setExistingBill(null)} data-testid="remove-existing-bill-btn"><X className="h-4 w-4" /></Button>
+              </div>
+            ) : (
+              <Input type="file" accept="image/*,application/pdf" data-testid="bill-file-input"
+                onChange={(e) => setBillFile(e.target.files?.[0] || null)} />
+            )}
           </div>
 
           <div className="space-y-1.5">

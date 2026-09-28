@@ -2,7 +2,8 @@ import React from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import { Pencil, Trash2, CheckCircle2, XCircle, Inbox } from "lucide-react";
+import { Pencil, Trash2, CheckCircle2, XCircle, Inbox, Paperclip } from "lucide-react";
+import { billUrl } from "../lib/api";
 
 const fmt = (iso) => {
   try {
@@ -70,6 +71,13 @@ export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete }) 
                   <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums text-sm">{fmt(r.purchase_date)}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
+                      {r.bill_path && (
+                        <a href={billUrl(r.bill_path)} target="_blank" rel="noreferrer"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[hsl(var(--accent))] hover:bg-muted"
+                          title={r.bill_filename || "View bill"} data-testid={`bill-link-${r.id}`}>
+                          <Paperclip className="h-4 w-4" />
+                        </a>
+                      )}
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(r)} data-testid={`edit-btn-${r.id}`}>
                         <Pencil className="h-4 w-4" />
                       </Button>

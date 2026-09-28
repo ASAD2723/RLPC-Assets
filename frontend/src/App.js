@@ -8,20 +8,24 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "./components/ui/alert-dialog";
-import { Plus, ChevronLeft, ChevronRight, Boxes, Upload } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Boxes, Upload, LogIn, LogOut, ShieldCheck } from "lucide-react";
 import { FilterBar } from "./components/FilterBar";
 import { PurchaseTable } from "./components/PurchaseTable";
 import { PurchaseForm } from "./components/PurchaseForm";
 import { ImportDialog } from "./components/ImportDialog";
+import { LoginDialog } from "./components/LoginDialog";
 import * as api from "./lib/api";
 
 const PAGE_SIZE = 50;
+const AUTH_KEY = "rlpc_auth";
 const EMPTY_FILTERS = {
   search: "", purchase_type: "", payment_mode: "", payment_by: "", approved: "", date_from: "", date_to: "",
 };
 
 function App() {
   const [config, setConfig] = useState(null);
+  const [auth, setAuth] = useState(null);
+  const [loginOpen, setLoginOpen] = useState(false);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [debouncedFilters, setDebouncedFilters] = useState(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
@@ -38,7 +42,27 @@ function App() {
 
   useEffect(() => {
     api.getConfig().then(setConfig).catch(() => toast.error("Failed to load configuration"));
+    try {
+      const saved = JSON.parse(localStorage.getItem(AUTH_KEY) || "null");
+      if (saved?.token) {
+        api.setAuthToken(saved.token);
+        api.getMe().then(() => setAuth(saved)).catch(() => { api.setAuthToken(null); localStorage.removeItem(AUTH_KEY); });
+      }
+    } catch { /* ignore */ }
   }, []);
+
+  const handleLoggedIn = (data) => {
+    api.setAuthToken(data.token);
+    localStorage.setItem(AUTH_KEY, JSON.stringify(data));
+    setAuth(data);
+  };
+
+  const handleLogout = () => {
+    api.setAuthToken(null);
+    localStorage.removeItem(AUTH_KEY);
+    setAuth(null);
+    toast.success("Logged out");
+  };
 
   // debounce filters (for search typing)
   useEffect(() => {
@@ -68,14 +92,19 @@ function App() {
   const openAdd = () => { setEditing(null); setFormOpen(true); };
   const openEdit = (r) => { setEditing(r); setFormOpen(true); };
 
-  const handleSubmit = async (formData) => {
+  const handleSubmit = async (formData, billFile) => {
     setSubmitting(true);
     try {
+      let payload = formData;
+      if (billFile) {
+        const up = await api.uploadBill(billFile);
+        payload = { ...formData, bill_path: up.bill_path, bill_filename: up.bill_filename };
+      }
       if (editing) {
-        await api.updatePurchase(editing.id, formData);
+        await api.updatePurchase(editing.id, payload);
         toast.success("Purchase record updated successfully.");
       } else {
-        await api.createPurchase(formData);
+        await api.createPurchase(payload);
         toast.success("Purchase record added successfully.");
       }
       setFormOpen(false);
@@ -144,13 +173,27 @@ function App() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {auth ? (
+              <div className="flex items-center gap-2">
+                <span className="hidden sm:flex items-center gap-1.5 rounded-md border border-border bg-secondary px-2.5 py-1.5 text-sm font-medium" data-testid="auth-username">
+                  <ShieldCheck className="h-4 w-4 text-[hsl(var(--success))]" /> {auth.username}
+                </span>
+                <Button variant="outline" onClick={handleLogout} data-testid="logout-btn" className="active:scale-95 transition-transform">
+                  <LogOut className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Logout</span>
+                </Button>
+              </div>
+            ) : (
+              <Button variant="outline" onClick={() => setLoginOpen(true)} data-testid="login-btn" className="active:scale-95 transition-transform">
+                <LogIn className="h-4 w-4 mr-2" /> Login
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setImportOpen(true)} data-testid="import-csv-btn"
               className="active:scale-95 transition-transform">
-              <Upload className="h-4 w-4 mr-2" /> Import CSV
+              <Upload className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Import CSV</span>
             </Button>
             <Button onClick={openAdd} data-testid="add-purchase-btn"
               className="bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent))]/90 active:scale-95 transition-transform">
-              <Plus className="h-4 w-4 mr-2" /> Add Purchase
+              <Plus className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Purchase</span>
             </Button>
           </div>
         </div>
@@ -204,7 +247,10 @@ function App() {
       <PurchaseForm
         open={formOpen} onOpenChange={(o) => { setFormOpen(o); if (!o) setEditing(null); }}
         onSubmit={handleSubmit} config={config} editing={editing} submitting={submitting}
+        canApprove={!!auth}
       />
+
+      <LoginDialog open={loginOpen} onOpenChange={setLoginOpen} onLoggedIn={handleLoggedIn} />
 
       <ImportDialog
         open={importOpen} onOpenChange={setImportOpen}
