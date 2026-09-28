@@ -197,8 +197,11 @@ def _build_query(search, purchase_type, payment_mode, payment_by, approved, date
     return q
 
 
+MAX_EXPORT_LIMIT = 20000
+
+
 async def _fetch_filtered(query):
-    docs = await db.purchases.find(query, {"_id": 0}).sort("purchase_date", -1).to_list(length=100000)
+    docs = await db.purchases.find(query, {"_id": 0}).sort("purchase_date", -1).to_list(length=MAX_EXPORT_LIMIT)
     return docs
 
 
@@ -295,11 +298,22 @@ async def stats(
     date_to: Optional[str] = None,
 ):
     query = _build_query(search, purchase_type, payment_mode, payment_by, approved, date_from, date_to)
-    docs = await db.purchases.find(query, {"business_manager_approved": 1, "purchase_type": 1, "_id": 0}).to_list(length=100000)
-    total = len(docs)
-    approved_count = sum(1 for d in docs if d.get("business_manager_approved"))
-    mobile = sum(1 for d in docs if d.get("purchase_type") == "Mobile Purchase")
-    tech = sum(1 for d in docs if d.get("purchase_type") == "Tech Device")
+    pipeline = [
+        {"$match": query},
+        {"$group": {
+            "_id": None,
+            "total": {"$sum": 1},
+            "approved": {"$sum": {"$cond": [{"$eq": ["$business_manager_approved", True]}, 1, 0]}},
+            "mobile": {"$sum": {"$cond": [{"$eq": ["$purchase_type", "Mobile Purchase"]}, 1, 0]}},
+            "tech": {"$sum": {"$cond": [{"$eq": ["$purchase_type", "Tech Device"]}, 1, 0]}},
+        }},
+    ]
+    agg = await db.purchases.aggregate(pipeline).to_list(length=1)
+    if agg:
+        d = agg[0]
+        total, approved_count, mobile, tech = d["total"], d["approved"], d["mobile"], d["tech"]
+    else:
+        total = approved_count = mobile = tech = 0
     return {
         "total": total,
         "approved": approved_count,
