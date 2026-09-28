@@ -8,7 +8,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "./components/ui/alert-dialog";
-import { Plus, ChevronLeft, ChevronRight, Boxes, Upload, LogIn, LogOut, ShieldCheck } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Boxes, Upload, LogIn, LogOut, ShieldCheck, CheckCircle2, X } from "lucide-react";
 import { FilterBar } from "./components/FilterBar";
 import { PurchaseTable } from "./components/PurchaseTable";
 import { PurchaseForm } from "./components/PurchaseForm";
@@ -40,6 +40,8 @@ function App() {
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [togglingId, setTogglingId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkApproving, setBulkApproving] = useState(false);
 
   useEffect(() => {
     api.getConfig().then(setConfig).catch(() => toast.error("Failed to load configuration"));
@@ -76,6 +78,7 @@ function App() {
     try {
       const list = await api.listPurchases(debouncedFilters, page, PAGE_SIZE);
       setData({ items: list.items, total: list.total });
+      setSelectedIds([]);
     } catch (e) {
       toast.error("Failed to load records");
     } finally {
@@ -129,6 +132,26 @@ function App() {
       toast.error(e?.response?.data?.detail || "Failed to update approval");
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  const toggleSelect = (id) =>
+    setSelectedIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  const toggleSelectAll = (pageIds) =>
+    setSelectedIds((s) => (pageIds.every((id) => s.includes(id)) ? s.filter((id) => !pageIds.includes(id)) : Array.from(new Set([...s, ...pageIds]))));
+
+  const bulkApprove = async () => {
+    setBulkApproving(true);
+    try {
+      const res = await api.bulkApproval(selectedIds, true);
+      toast.success(`${res.updated} record${res.updated === 1 ? "" : "s"} approved.`);
+      setSelectedIds([]);
+      await refresh();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Bulk approval failed");
+    } finally {
+      setBulkApproving(false);
     }
   };
 
@@ -225,10 +248,26 @@ function App() {
             exporting={exporting} total={data.total}
           />
 
+          {auth && selectedIds.length > 0 && (
+            <div className="flex items-center justify-between rounded-md border border-[hsl(var(--accent))]/40 bg-[hsl(var(--accent))]/5 px-4 py-2.5" data-testid="bulk-action-bar">
+              <span className="text-sm font-medium" data-testid="bulk-selected-count">{selectedIds.length} selected</span>
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={bulkApprove} disabled={bulkApproving} data-testid="bulk-approve-btn"
+                  className="bg-[hsl(var(--success))] text-white hover:bg-[hsl(var(--success))]/90 active:scale-95 transition-transform">
+                  <CheckCircle2 className="h-4 w-4 mr-2" /> {bulkApproving ? "Approving..." : "Approve selected"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedIds([])} data-testid="bulk-clear-btn" className="text-muted-foreground">
+                  <X className="h-4 w-4 mr-1" /> Clear
+                </Button>
+              </div>
+            </div>
+          )}
+
           <PurchaseTable
             items={data.items} loading={loading} startIndex={startIndex}
             onEdit={openEdit} onDelete={setDeleteTarget}
             canApprove={!!auth} onToggleApprove={handleToggleApprove} togglingId={togglingId}
+            selectedIds={selectedIds} onToggleSelect={toggleSelect} onToggleSelectAll={toggleSelectAll}
           />
 
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">

@@ -310,6 +310,24 @@ class ApprovalRequest(BaseModel):
     approved: bool
 
 
+class BulkApprovalRequest(BaseModel):
+    ids: List[str]
+    approved: bool = True
+
+
+@api_router.patch("/purchases/approval/bulk")
+async def bulk_approval(body: BulkApprovalRequest, user: Optional[str] = Depends(optional_user)):
+    if not user:
+        raise HTTPException(status_code=403, detail="Only an authorized user can change the approval status")
+    if not body.ids:
+        return {"updated": 0}
+    res = await db.purchases.update_many(
+        {"id": {"$in": body.ids}},
+        {"$set": {"business_manager_approved": body.approved, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"updated": res.modified_count}
+
+
 @api_router.patch("/purchases/{purchase_id}/approval", response_model=Purchase)
 async def set_approval(purchase_id: str, body: ApprovalRequest, user: Optional[str] = Depends(optional_user)):
     if not user:

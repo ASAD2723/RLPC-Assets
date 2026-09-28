@@ -51,6 +51,9 @@ export const deletePurchase = (id) => axios.delete(`${API}/purchases/${id}`).the
 export const setApproval = (id, approved) =>
   axios.patch(`${API}/purchases/${id}/approval`, { approved }).then((r) => r.data);
 
+export const bulkApproval = (ids, approved = true) =>
+  axios.patch(`${API}/purchases/approval/bulk`, { ids, approved }).then((r) => r.data);
+
 export const exportUrl = (kind, filters) => {
   const params = new URLSearchParams(buildParams(filters)).toString();
   return `${API}/purchases/export/${kind}${params ? `?${params}` : ""}`;

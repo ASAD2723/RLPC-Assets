@@ -3,7 +3,7 @@ import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Label } from "../components/ui/label";
-import { Search, X, FileSpreadsheet, FileText } from "lucide-react";
+import { Search, X, FileSpreadsheet, FileText, Clock } from "lucide-react";
 
 const ALL = "__all__";
 
@@ -11,6 +11,9 @@ export const FilterBar = ({ filters, setFilters, config, onExportXlsx, onExportP
   const update = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
   const selVal = (v) => (v === "" || v == null ? ALL : v);
   const onSel = (k, v) => update(k, v === ALL ? "" : v);
+
+  const pendingActive = filters.approved === false;
+  const togglePending = () => update("approved", pendingActive ? "" : false);
 
   const hasFilters =
     filters.search || filters.purchase_type || filters.payment_mode || filters.payment_by ||
@@ -31,6 +34,10 @@ export const FilterBar = ({ filters, setFilters, config, onExportXlsx, onExportP
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant={pendingActive ? "default" : "outline"} onClick={togglePending} data-testid="pending-only-btn"
+            className={`active:scale-95 transition-transform ${pendingActive ? "bg-amber-500 text-white hover:bg-amber-500/90" : ""}`}>
+            <Clock className="h-4 w-4 mr-2" /> Pending only
+          </Button>
           <Button variant="outline" onClick={onExportXlsx} disabled={exporting} data-testid="export-xlsx-btn"
             className="active:scale-95 transition-transform">
             <FileSpreadsheet className="h-4 w-4 mr-2 text-[hsl(var(--success))]" /> XLSX

@@ -3,6 +3,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Pencil, Trash2, CheckCircle2, XCircle, Inbox, Paperclip } from "lucide-react";
+import { Checkbox } from "../components/ui/checkbox";
 import { billUrl } from "../lib/api";
 
 const fmt = (iso) => {
@@ -13,13 +14,22 @@ const fmt = (iso) => {
   } catch { return iso; }
 };
 
-export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, canApprove, onToggleApprove, togglingId }) => {
+export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, canApprove, onToggleApprove, togglingId, selectedIds = [], onToggleSelect, onToggleSelectAll }) => {
+  const colCount = canApprove ? 10 : 9;
+  const selectedSet = new Set(selectedIds);
+  const pageIds = items.map((r) => r.id);
+  const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedSet.has(id));
   return (
     <div className="rounded-md border border-border bg-card overflow-hidden">
       <div className="max-h-[620px] overflow-auto">
         <Table>
           <TableHeader className="sticky top-0 z-10 bg-background">
             <TableRow className="border-b border-border hover:bg-transparent">
+              {canApprove && (
+                <TableHead className="w-10">
+                  <Checkbox checked={allSelected} onCheckedChange={() => onToggleSelectAll(pageIds)} data-testid="select-all-checkbox" aria-label="Select all on page" />
+                </TableHead>
+              )}
               <TableHead className="w-12 text-xs font-semibold uppercase tracking-wide">#</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Employee ID</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Employee Name</TableHead>
@@ -35,12 +45,12 @@ export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, ca
             {loading ? (
               [...Array(6)].map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={9}><div className="h-6 w-full animate-pulse rounded bg-muted" /></TableCell>
+                  <TableCell colSpan={colCount}><div className="h-6 w-full animate-pulse rounded bg-muted" /></TableCell>
                 </TableRow>
               ))
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9}>
+                <TableCell colSpan={colCount}>
                   <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="empty-state">
                     <Inbox className="h-10 w-10 text-muted-foreground/50 mb-3" />
                     <p className="font-display text-lg font-semibold">No purchase records</p>
@@ -50,7 +60,12 @@ export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, ca
               </TableRow>
             ) : (
               items.map((r, i) => (
-                <TableRow key={r.id} data-testid={`purchase-row-${r.id}`} className="transition-colors hover:bg-muted/50">
+                <TableRow key={r.id} data-testid={`purchase-row-${r.id}`} data-state={selectedSet.has(r.id) ? "selected" : undefined} className="transition-colors hover:bg-muted/50 data-[state=selected]:bg-[hsl(var(--accent))]/5">
+                  {canApprove && (
+                    <TableCell>
+                      <Checkbox checked={selectedSet.has(r.id)} onCheckedChange={() => onToggleSelect(r.id)} data-testid={`select-row-${r.id}`} aria-label="Select row" />
+                    </TableCell>
+                  )}
                   <TableCell className="text-muted-foreground tabular-nums">{startIndex + i + 1}</TableCell>
                   <TableCell className="font-medium">{r.employee_id}</TableCell>
                   <TableCell>{r.employee_name}</TableCell>
