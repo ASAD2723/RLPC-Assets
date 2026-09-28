@@ -268,6 +268,7 @@ function App() {
             onEdit={openEdit} onDelete={setDeleteTarget}
             canApprove={!!auth} onToggleApprove={handleToggleApprove} togglingId={togglingId}
             selectedIds={selectedIds} onToggleSelect={toggleSelect} onToggleSelectAll={toggleSelectAll}
+            canEdit={!!auth}
           />
 
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">

@@ -2,7 +2,7 @@ import React from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import { Pencil, Trash2, CheckCircle2, XCircle, Inbox, Paperclip } from "lucide-react";
+import { Pencil, Trash2, CheckCircle2, XCircle, Inbox, Paperclip, Lock } from "lucide-react";
 import { Checkbox } from "../components/ui/checkbox";
 import { billUrl } from "../lib/api";
 
@@ -14,7 +14,7 @@ const fmt = (iso) => {
   } catch { return iso; }
 };
 
-export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, canApprove, onToggleApprove, togglingId, selectedIds = [], onToggleSelect, onToggleSelectAll }) => {
+export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, canApprove, onToggleApprove, togglingId, selectedIds = [], onToggleSelect, onToggleSelectAll, canEdit }) => {
   const colCount = canApprove ? 10 : 9;
   const selectedSet = new Set(selectedIds);
   const pageIds = items.map((r) => r.id);
@@ -103,12 +103,20 @@ export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, ca
                           <Paperclip className="h-4 w-4" />
                         </a>
                       )}
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(r)} data-testid={`edit-btn-${r.id}`}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => onDelete(r)} data-testid={`delete-btn-${r.id}`}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {canEdit ? (
+                        <>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(r)} data-testid={`edit-btn-${r.id}`}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => onDelete(r)} data-testid={`delete-btn-${r.id}`}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      ) : (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground pr-1" data-testid={`readonly-${r.id}`}>
+                          <Lock className="h-3 w-3" /> Login to edit
+                        </span>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

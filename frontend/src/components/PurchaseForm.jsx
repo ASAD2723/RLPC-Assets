@@ -22,6 +22,7 @@ export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, su
   const [errors, setErrors] = useState({});
   const [billFile, setBillFile] = useState(null);
   const [existingBill, setExistingBill] = useState(null);
+  const [datePart, setDatePart] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -40,6 +41,7 @@ export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, su
       setErrors({});
       setBillFile(null);
       setExistingBill(editing?.bill_path ? { bill_path: editing.bill_path, bill_filename: editing.bill_filename } : null);
+      setDatePart(editing?.purchase_date ? editing.purchase_date.slice(0, 10) : new Date().toISOString().slice(0, 10));
     }
   }, [open, editing]);
 
@@ -52,6 +54,7 @@ export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, su
     if (!form.purchase_type) e.purchase_type = "Please select Purchase Of";
     if (!form.payment_mode) e.payment_mode = "Please select Mode of Payment";
     if (!form.payment_by) e.payment_by = "Please select Payment By";
+    if (!datePart) e.purchase_date = "Please select a purchase date";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -63,15 +66,12 @@ export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, su
         ...form,
         employee_id: form.employee_id.trim(),
         employee_name: form.employee_name.trim(),
+        purchase_date: `${datePart}T00:00:00`,
         bill_path: existingBill?.bill_path || null,
         bill_filename: existingBill?.bill_filename || null,
       },
       billFile,
     );
-  };
-
-  const fmtDate = (iso) => {
-    try { return new Date(iso).toLocaleString(); } catch { return iso; }
   };
 
   return (
@@ -179,10 +179,10 @@ export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, su
           </div>
 
           <div className="space-y-1.5">
-            <Label className="flex items-center gap-1.5 text-muted-foreground"><Lock className="h-3 w-3" /> Purchase Date</Label>
-            <Input readOnly disabled data-testid="input-purchase-date"
-              value={editing ? fmtDate(editing.purchase_date) : "Auto-recorded on submit"}
-              className="bg-muted text-muted-foreground cursor-not-allowed" />
+            <Label htmlFor="purchase_date">Purchase Date <span className="text-destructive">*</span></Label>
+            <Input id="purchase_date" type="date" data-testid="input-purchase-date"
+              value={datePart} onChange={(e) => setDatePart(e.target.value)} />
+            {errors.purchase_date && <p className="text-xs text-destructive" data-testid="error-purchase-date">{errors.purchase_date}</p>}
           </div>
         </div>
 

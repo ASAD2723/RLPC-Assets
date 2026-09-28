@@ -42,11 +42,12 @@ PAYMENT_BY = ["Jogy Joseph", "Mohammad Omer", "Muhammad Khaleel", "Muhammad Abdu
 COLUMNS = ["Employee ID", "Employee Name", "Purchase Of", "Mode of Payment",
            "Payment By", "Approved by Business Manager", "Date"]
 
-# ----- Auth (hardcoded single user) -----
+# ----- Auth (hardcoded users) -----
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALG = "HS256"
-AUTH_USERNAME = os.environ["AUTH_USERNAME"]
-AUTH_PASSWORD = os.environ["AUTH_PASSWORD"]
+AUTH_USERS = {os.environ["AUTH_USERNAME"]: os.environ["AUTH_PASSWORD"]}
+if os.environ.get("AUTH_USERNAME_2"):
+    AUTH_USERS[os.environ["AUTH_USERNAME_2"]] = os.environ["AUTH_PASSWORD_2"]
 
 
 def _create_token(username: str) -> str:
@@ -62,6 +63,12 @@ async def optional_user(authorization: Optional[str] = Header(None)) -> Optional
         return payload.get("sub")
     except Exception:
         return None
+
+
+async def require_user(user: Optional[str] = Depends(optional_user)) -> str:
+    if not user:
+        raise HTTPException(status_code=401, detail="You must be logged in to perform this action")
+    return user
 
 
 # ----- Object storage (Emergent managed) -----
@@ -132,11 +139,11 @@ class PurchaseBase(BaseModel):
 
 
 class PurchaseCreate(PurchaseBase):
-    pass
+    purchase_date: Optional[str] = None
 
 
 class PurchaseUpdate(PurchaseBase):
-    pass
+    purchase_date: Optional[str] = None
 
 
 class Purchase(PurchaseBase):
@@ -199,7 +206,7 @@ async def root():
 
 @api_router.post("/auth/login")
 async def login(body: LoginRequest):
-    if body.username != AUTH_USERNAME or body.password != AUTH_PASSWORD:
+    if AUTH_USERS.get(body.username) != body.password:
         raise HTTPException(status_code=401, detail="Invalid username or password")
     return {"token": _create_token(body.username), "username": body.username}
 
@@ -242,7 +249,9 @@ async def create_purchase(payload: PurchaseCreate, user: Optional[str] = Depends
     if payload.business_manager_approved and not user:
         raise HTTPException(status_code=403, detail="Only an authorized user can mark a record as approved")
     now = datetime.now(timezone.utc).isoformat()
-    obj = Purchase(**payload.model_dump(), purchase_date=now, created_at=now, updated_at=now)
+    data = payload.model_dump()
+    purchase_date = data.pop("purchase_date", None) or now
+    obj = Purchase(**data, purchase_date=purchase_date, created_at=now, updated_at=now)
     await db.purchases.insert_one(obj.model_dump())
     return obj
 
@@ -292,14 +301,15 @@ async def stats(
 
 
 @api_router.put("/purchases/{purchase_id}", response_model=Purchase)
-async def update_purchase(purchase_id: str, payload: PurchaseUpdate, user: Optional[str] = Depends(optional_user)):
+async def update_purchase(purchase_id: str, payload: PurchaseUpdate, user: str = Depends(require_user)):
     _validate_enums(payload)
     existing = await db.purchases.find_one({"id": purchase_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Purchase record not found")
-    if bool(payload.business_manager_approved) != bool(existing.get("business_manager_approved")) and not user:
-        raise HTTPException(status_code=403, detail="Only an authorized user can change the approval status")
     update_doc = payload.model_dump()
+    purchase_date = update_doc.pop("purchase_date", None)
+    if purchase_date:
+        update_doc["purchase_date"] = purchase_date
     update_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.purchases.update_one({"id": purchase_id}, {"$set": update_doc})
     merged = {**existing, **update_doc}
@@ -344,7 +354,7 @@ async def set_approval(purchase_id: str, body: ApprovalRequest, user: Optional[s
 
 
 @api_router.delete("/purchases/{purchase_id}")
-async def delete_purchase(purchase_id: str):
+async def delete_purchase(purchase_id: str, user: str = Depends(require_user)):
     res = await db.purchases.delete_one({"id": purchase_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Purchase record not found")
