@@ -48,6 +48,9 @@ export const updatePurchase = (id, data) => axios.put(`${API}/purchases/${id}`, 
 
 export const deletePurchase = (id) => axios.delete(`${API}/purchases/${id}`).then((r) => r.data);
 
+export const setApproval = (id, approved) =>
+  axios.patch(`${API}/purchases/${id}/approval`, { approved }).then((r) => r.data);
+
 export const exportUrl = (kind, filters) => {
   const params = new URLSearchParams(buildParams(filters)).toString();
   return `${API}/purchases/export/${kind}${params ? `?${params}` : ""}`;

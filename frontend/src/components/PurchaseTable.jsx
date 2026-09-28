@@ -13,7 +13,7 @@ const fmt = (iso) => {
   } catch { return iso; }
 };
 
-export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete }) => {
+export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, canApprove, onToggleApprove, togglingId }) => {
   return (
     <div className="rounded-md border border-border bg-card overflow-hidden">
       <div className="max-h-[620px] overflow-auto">
@@ -58,15 +58,25 @@ export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete }) 
                   <TableCell>{r.payment_mode}</TableCell>
                   <TableCell>{r.payment_by}</TableCell>
                   <TableCell>
-                    {r.business_manager_approved ? (
-                      <Badge className="bg-[hsl(var(--success))] text-white hover:bg-[hsl(var(--success))] gap-1" data-testid={`approved-${r.id}`}>
-                        <CheckCircle2 className="h-3 w-3" /> Approved
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="gap-1 text-muted-foreground" data-testid={`not-approved-${r.id}`}>
-                        <XCircle className="h-3 w-3" /> Not Approved
-                      </Badge>
-                    )}
+                    {(() => {
+                      const badge = r.business_manager_approved ? (
+                        <Badge className="bg-[hsl(var(--success))] text-white hover:bg-[hsl(var(--success))] gap-1" data-testid={`approved-${r.id}`}>
+                          <CheckCircle2 className="h-3 w-3" /> Approved
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="gap-1 text-muted-foreground" data-testid={`not-approved-${r.id}`}>
+                          <XCircle className="h-3 w-3" /> Not Approved
+                        </Badge>
+                      );
+                      if (!canApprove) return badge;
+                      return (
+                        <button type="button" data-testid={`approve-toggle-${r.id}`} disabled={togglingId === r.id}
+                          onClick={() => onToggleApprove(r)} title="Click to toggle approval"
+                          className="rounded-md transition-transform hover:opacity-80 active:scale-95 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent))]">
+                          {badge}
+                        </button>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums text-sm">{fmt(r.purchase_date)}</TableCell>
                   <TableCell className="text-right">

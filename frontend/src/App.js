@@ -39,6 +39,7 @@ function App() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [togglingId, setTogglingId] = useState(null);
 
   useEffect(() => {
     api.getConfig().then(setConfig).catch(() => toast.error("Failed to load configuration"));
@@ -114,6 +115,20 @@ function App() {
       toast.error(e?.response?.data?.detail || "Failed to save record");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleToggleApprove = async (r) => {
+    setTogglingId(r.id);
+    const next = !r.business_manager_approved;
+    try {
+      await api.setApproval(r.id, next);
+      setData((d) => ({ ...d, items: d.items.map((x) => (x.id === r.id ? { ...x, business_manager_approved: next } : x)) }));
+      toast.success(next ? "Marked as approved." : "Approval removed.");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Failed to update approval");
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -213,6 +228,7 @@ function App() {
           <PurchaseTable
             items={data.items} loading={loading} startIndex={startIndex}
             onEdit={openEdit} onDelete={setDeleteTarget}
+            canApprove={!!auth} onToggleApprove={handleToggleApprove} togglingId={togglingId}
           />
 
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">

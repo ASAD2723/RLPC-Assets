@@ -25,6 +25,20 @@ def session():
 
 
 @pytest.fixture(scope="session")
+def auth_token(session):
+    r = session.post(f"{API}/auth/login", json={"username": "158", "password": "Rlpc_974"}, timeout=10)
+    assert r.status_code == 200, r.text
+    return r.json()["token"]
+
+
+@pytest.fixture(scope="session")
+def auth_session(auth_token):
+    s = requests.Session()
+    s.headers.update({"Content-Type": "application/json", "Authorization": f"Bearer {auth_token}"})
+    return s
+
+
+@pytest.fixture(scope="session")
 def cleanup(session):
     """Clean up any TEST_ prefixed records before/after."""
     created_ids = []
@@ -56,7 +70,7 @@ class TestConfig:
         assert r.status_code == 200
         d = r.json()
         assert d["org_name"] == "RLPC IT Assets Records"
-        assert d["purchase_types"] == ["Mobile Purchase", "Tech Device"]
+        assert d["purchase_types"] == ["Mobile Purchase", "Tech Device", "Safety Shoes"]
         assert d["payment_modes"] == ["Cash", "Credit Card", "Bank Transfer"]
         assert d["payment_by"] == ["Jogy Joseph", "Mohammad Omer",
                                     "Muhammad Khaleel", "Muhammad Abdullah"]
@@ -129,7 +143,7 @@ class TestPagination:
 # ----- Search & Filters -----
 class TestFilters:
     @pytest.fixture(scope="class")
-    def data(self, session):
+    def data(self, auth_session):
         recs = [
             _payload("TEST_F1", "TEST_Alice", "Mobile Purchase", "Cash", "Jogy Joseph", True),
             _payload("TEST_F2", "TEST_Bob", "Tech Device", "Credit Card", "Mohammad Omer", False),
@@ -137,11 +151,11 @@ class TestFilters:
         ]
         ids = []
         for p in recs:
-            r = session.post(f"{API}/purchases", json=p, timeout=10)
+            r = auth_session.post(f"{API}/purchases", json=p, timeout=10)
             ids.append(r.json()["id"])
         yield ids
         for pid in ids:
-            session.delete(f"{API}/purchases/{pid}", timeout=10)
+            auth_session.delete(f"{API}/purchases/{pid}", timeout=10)
 
     def test_search_by_employee_id(self, session, data):
         r = session.get(f"{API}/purchases", params={"search": "TEST_F1"}, timeout=10)
@@ -215,11 +229,11 @@ class TestStats:
             assert k in d
         assert d["total"] == d["approved"] + d["pending"]
 
-    def test_stats_respects_filter(self, session):
-        # Create 2 approved mobile purchases
+    def test_stats_respects_filter(self, session, auth_session):
+        # Create 2 approved mobile purchases (requires token)
         ids = []
         for i in range(2):
-            r = session.post(f"{API}/purchases",
+            r = auth_session.post(f"{API}/purchases",
                              json=_payload(emp_id=f"TEST_ST{i}", approved=True), timeout=10)
             ids.append(r.json()["id"])
         try:
@@ -237,7 +251,7 @@ class TestStats:
 
 # ----- Update -----
 class TestUpdate:
-    def test_update_keeps_purchase_date(self, session):
+    def test_update_keeps_purchase_date(self, session, auth_session):
         r = session.post(f"{API}/purchases", json=_payload(emp_id="TEST_UPD1"), timeout=10)
         rec = r.json()
         pid = rec["id"]
@@ -247,7 +261,8 @@ class TestUpdate:
             import time
             time.sleep(1)
             upd = _payload(emp_id="TEST_UPD1", name="TEST_Updated", ptype="Tech Device", approved=True)
-            r2 = session.put(f"{API}/purchases/{pid}", json=upd, timeout=10)
+            # approval change requires token
+            r2 = auth_session.put(f"{API}/purchases/{pid}", json=upd, timeout=10)
             assert r2.status_code == 200
             d = r2.json()
             assert d["employee_name"] == "TEST_Updated"

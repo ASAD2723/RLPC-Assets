@@ -306,6 +306,25 @@ async def update_purchase(purchase_id: str, payload: PurchaseUpdate, user: Optio
     return Purchase(**merged)
 
 
+class ApprovalRequest(BaseModel):
+    approved: bool
+
+
+@api_router.patch("/purchases/{purchase_id}/approval", response_model=Purchase)
+async def set_approval(purchase_id: str, body: ApprovalRequest, user: Optional[str] = Depends(optional_user)):
+    if not user:
+        raise HTTPException(status_code=403, detail="Only an authorized user can change the approval status")
+    existing = await db.purchases.find_one({"id": purchase_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Purchase record not found")
+    update_doc = {
+        "business_manager_approved": body.approved,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.purchases.update_one({"id": purchase_id}, {"$set": update_doc})
+    return Purchase(**{**existing, **update_doc})
+
+
 @api_router.delete("/purchases/{purchase_id}")
 async def delete_purchase(purchase_id: str):
     res = await db.purchases.delete_one({"id": purchase_id})
