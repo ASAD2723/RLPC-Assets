@@ -14,6 +14,12 @@ const fmt = (iso) => {
   } catch { return iso; }
 };
 
+const fmtShort = (iso) => {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
+  } catch { return iso; }
+};
+
 export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, canApprove, onToggleApprove, togglingId, canSafetyApprove, onToggleSafety, togglingSafetyId, selectedIds = [], onToggleSelect, onToggleSelectAll, canEdit, canDelete }) => {
   const colCount = canApprove ? 11 : 10;
   const selectedSet = new Set(selectedIds);
@@ -85,14 +91,18 @@ export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, ca
                         </Badge>
                       );
                       if (!canApprove) return badge;
-                      return (
+                      const control = (
                         <button type="button" data-testid={`approve-toggle-${r.id}`} disabled={togglingId === r.id}
                           onClick={() => onToggleApprove(r)} title="Click to toggle approval"
                           className="rounded-md transition-transform hover:opacity-80 active:scale-95 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent))]">
                           {badge}
                         </button>
                       );
+                      return control;
                     })()}
+                    {r.business_manager_approved && r.business_approved_by && (
+                      <div className="text-[10px] leading-tight text-muted-foreground mt-0.5" data-testid={`business-trail-${r.id}`}>by {r.business_approved_by} · {fmtShort(r.business_approved_at)}</div>
+                    )}
                   </TableCell>
                   <TableCell>
                     {(() => {
@@ -114,6 +124,9 @@ export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, ca
                         </button>
                       );
                     })()}
+                    {r.safety_team_approved && r.safety_approved_by && (
+                      <div className="text-[10px] leading-tight text-muted-foreground mt-0.5" data-testid={`safety-trail-${r.id}`}>by {r.safety_approved_by} · {fmtShort(r.safety_approved_at)}</div>
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums text-sm">{fmt(r.purchase_date)}</TableCell>
                   <TableCell className="text-right">

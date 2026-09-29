@@ -126,8 +126,8 @@ function App() {
     setTogglingSafetyId(r.id);
     const next = !r.safety_team_approved;
     try {
-      await api.setSafetyApproval(r.id, next);
-      setData((d) => ({ ...d, items: d.items.map((x) => (x.id === r.id ? { ...x, safety_team_approved: next } : x)) }));
+      const updated = await api.setSafetyApproval(r.id, next);
+      setData((d) => ({ ...d, items: d.items.map((x) => (x.id === r.id ? { ...x, ...updated } : x)) }));
       toast.success(next ? "Safety Team approved." : "Safety approval removed.");
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Failed to update safety approval");
@@ -140,8 +140,8 @@ function App() {
     setTogglingId(r.id);
     const next = !r.business_manager_approved;
     try {
-      await api.setApproval(r.id, next);
-      setData((d) => ({ ...d, items: d.items.map((x) => (x.id === r.id ? { ...x, business_manager_approved: next } : x)) }));
+      const updated = await api.setApproval(r.id, next);
+      setData((d) => ({ ...d, items: d.items.map((x) => (x.id === r.id ? { ...x, ...updated } : x)) }));
       toast.success(next ? "Marked as approved." : "Approval removed.");
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Failed to update approval");

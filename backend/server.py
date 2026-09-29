@@ -185,6 +185,16 @@ class Purchase(PurchaseBase):
     purchase_date: str
     created_at: str
     updated_at: str
+    business_approved_by: Optional[str] = None
+    business_approved_at: Optional[str] = None
+    safety_approved_by: Optional[str] = None
+    safety_approved_at: Optional[str] = None
+
+
+def _trail(prefix: str, approved: bool, user: Optional[str], now: str) -> dict:
+    if approved:
+        return {f"{prefix}_approved_by": user, f"{prefix}_approved_at": now}
+    return {f"{prefix}_approved_by": None, f"{prefix}_approved_at": None}
 
 
 def _validate_enums(p: PurchaseBase):
@@ -316,6 +326,10 @@ async def create_purchase(payload: PurchaseCreate, user: Optional[str] = Depends
         business_manager_approved=business_approved, safety_team_approved=safety_approved,
         bill_path=bill_path, bill_filename=bill_filename,
         purchase_date=purchase_date, created_at=now, updated_at=now,
+        business_approved_by=(user if business_approved else None),
+        business_approved_at=(now if business_approved else None),
+        safety_approved_by=(user if safety_approved else None),
+        safety_approved_at=(now if safety_approved else None),
     )
     await db.purchases.insert_one(obj.model_dump())
     return obj
@@ -389,6 +403,10 @@ async def update_purchase(purchase_id: str, payload: PurchaseUpdate, user: str =
         purchase_date = _normalize_date(update_doc.pop("purchase_date", None))
         if purchase_date:
             update_doc["purchase_date"] = purchase_date
+        if bool(payload.business_manager_approved) != bool(existing.get("business_manager_approved")):
+            update_doc.update(_trail("business", payload.business_manager_approved, user, now))
+        if bool(payload.safety_team_approved) != bool(existing.get("safety_team_approved")):
+            update_doc.update(_trail("safety", payload.safety_team_approved, user, now))
     elif user in EDITORS:
         if payload.payment_mode and payload.payment_mode not in PAYMENT_MODES:
             raise HTTPException(status_code=422, detail="Invalid Mode of Payment value")
@@ -398,6 +416,8 @@ async def update_purchase(purchase_id: str, payload: PurchaseUpdate, user: str =
     else:
         # Safety-only approvers (170, 121) may only change Safety Team approval.
         update_doc = {"safety_team_approved": bool(payload.safety_team_approved)}
+        if bool(payload.safety_team_approved) != bool(existing.get("safety_team_approved")):
+            update_doc.update(_trail("safety", payload.safety_team_approved, user, now))
     update_doc["updated_at"] = now
     await db.purchases.update_one({"id": purchase_id}, {"$set": update_doc})
     merged = {**existing, **update_doc}
@@ -417,10 +437,10 @@ class BulkApprovalRequest(BaseModel):
 async def bulk_approval(body: BulkApprovalRequest, user: str = Depends(require_approver)):
     if not body.ids:
         return {"updated": 0}
-    res = await db.purchases.update_many(
-        {"id": {"$in": body.ids}},
-        {"$set": {"business_manager_approved": body.approved, "updated_at": datetime.now(timezone.utc).isoformat()}},
-    )
+    now = datetime.now(timezone.utc).isoformat()
+    update_doc = {"business_manager_approved": body.approved, "updated_at": now}
+    update_doc.update(_trail("business", body.approved, user, now))
+    res = await db.purchases.update_many({"id": {"$in": body.ids}}, {"$set": update_doc})
     return {"updated": res.modified_count}
 
 
@@ -429,10 +449,9 @@ async def set_approval(purchase_id: str, body: ApprovalRequest, user: str = Depe
     existing = await db.purchases.find_one({"id": purchase_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Purchase record not found")
-    update_doc = {
-        "business_manager_approved": body.approved,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
+    now = datetime.now(timezone.utc).isoformat()
+    update_doc = {"business_manager_approved": body.approved, "updated_at": now}
+    update_doc.update(_trail("business", body.approved, user, now))
     await db.purchases.update_one({"id": purchase_id}, {"$set": update_doc})
     return Purchase(**{**existing, **update_doc})
 
@@ -442,10 +461,9 @@ async def set_safety_approval(purchase_id: str, body: ApprovalRequest, user: str
     existing = await db.purchases.find_one({"id": purchase_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Purchase record not found")
-    update_doc = {
-        "safety_team_approved": body.approved,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
+    now = datetime.now(timezone.utc).isoformat()
+    update_doc = {"safety_team_approved": body.approved, "updated_at": now}
+    update_doc.update(_trail("safety", body.approved, user, now))
     await db.purchases.update_one({"id": purchase_id}, {"$set": update_doc})
     return Purchase(**{**existing, **update_doc})
 
