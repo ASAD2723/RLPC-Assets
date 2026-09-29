@@ -212,27 +212,29 @@ function App() {
           </div>
           <div className="flex items-center gap-2">
             {auth ? (
-              <div className="flex items-center gap-2">
-                <span className="hidden sm:flex items-center gap-1.5 rounded-md border border-border bg-secondary px-2.5 py-1.5 text-sm font-medium" data-testid="auth-username">
-                  <ShieldCheck className="h-4 w-4 text-[hsl(var(--success))]" /> {auth.username}
-                </span>
-                <Button variant="outline" onClick={handleLogout} data-testid="logout-btn" className="active:scale-95 transition-transform">
-                  <LogOut className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Logout</span>
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="hidden sm:flex items-center gap-1.5 rounded-md border border-border bg-secondary px-2.5 py-1.5 text-sm font-medium" data-testid="auth-username">
+                    <ShieldCheck className={`h-4 w-4 ${auth.can_approve ? "text-[hsl(var(--success))]" : "text-muted-foreground"}`} /> {auth.username}
+                  </span>
+                  <Button variant="outline" onClick={handleLogout} data-testid="logout-btn" className="active:scale-95 transition-transform">
+                    <LogOut className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Logout</span>
+                  </Button>
+                </div>
+                <Button variant="outline" onClick={() => setImportOpen(true)} data-testid="import-csv-btn"
+                  className="active:scale-95 transition-transform">
+                  <Upload className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Import CSV</span>
                 </Button>
-              </div>
+                <Button onClick={openAdd} data-testid="add-purchase-btn"
+                  className="bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent))]/90 active:scale-95 transition-transform">
+                  <Plus className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Purchase</span>
+                </Button>
+              </>
             ) : (
               <Button variant="outline" onClick={() => setLoginOpen(true)} data-testid="login-btn" className="active:scale-95 transition-transform">
                 <LogIn className="h-4 w-4 mr-2" /> Login
               </Button>
             )}
-            <Button variant="outline" onClick={() => setImportOpen(true)} data-testid="import-csv-btn"
-              className="active:scale-95 transition-transform">
-              <Upload className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Import CSV</span>
-            </Button>
-            <Button onClick={openAdd} data-testid="add-purchase-btn"
-              className="bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent))]/90 active:scale-95 transition-transform">
-              <Plus className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Purchase</span>
-            </Button>
           </div>
         </div>
       </header>
@@ -248,7 +250,7 @@ function App() {
             exporting={exporting} total={data.total}
           />
 
-          {auth && selectedIds.length > 0 && (
+          {auth?.can_approve && selectedIds.length > 0 && (
             <div className="flex items-center justify-between rounded-md border border-[hsl(var(--accent))]/40 bg-[hsl(var(--accent))]/5 px-4 py-2.5" data-testid="bulk-action-bar">
               <span className="text-sm font-medium" data-testid="bulk-selected-count">{selectedIds.length} selected</span>
               <div className="flex items-center gap-2">
@@ -266,7 +268,7 @@ function App() {
           <PurchaseTable
             items={data.items} loading={loading} startIndex={startIndex}
             onEdit={openEdit} onDelete={setDeleteTarget}
-            canApprove={!!auth} onToggleApprove={handleToggleApprove} togglingId={togglingId}
+            canApprove={!!auth?.can_approve} onToggleApprove={handleToggleApprove} togglingId={togglingId}
             selectedIds={selectedIds} onToggleSelect={toggleSelect} onToggleSelectAll={toggleSelectAll}
             canEdit={!!auth}
           />
@@ -303,7 +305,7 @@ function App() {
       <PurchaseForm
         open={formOpen} onOpenChange={(o) => { setFormOpen(o); if (!o) setEditing(null); }}
         onSubmit={handleSubmit} config={config} editing={editing} submitting={submitting}
-        canApprove={!!auth}
+        canApprove={!!auth?.can_approve}
       />
 
       <LoginDialog open={loginOpen} onOpenChange={setLoginOpen} onLoggedIn={handleLoggedIn} />

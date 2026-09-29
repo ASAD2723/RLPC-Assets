@@ -42,12 +42,20 @@ PAYMENT_BY = ["Jogy Joseph", "Mohammad Omer", "Muhammad Khaleel", "Muhammad Abdu
 COLUMNS = ["Employee ID", "Employee Name", "Purchase Of", "Mode of Payment",
            "Payment By", "Approved by Business Manager", "Date"]
 
-# ----- Auth (hardcoded users) -----
+# ----- Auth (hardcoded users, RBAC: approver vs editor) -----
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALG = "HS256"
-AUTH_USERS = {os.environ["AUTH_USERNAME"]: os.environ["AUTH_PASSWORD"]}
+AUTH_USERS = {}
+for _sfx in ["", "_2", "_3", "_4", "_5", "_6"]:
+    _u = os.environ.get(f"AUTH_USERNAME{_sfx}")
+    _p = os.environ.get(f"AUTH_PASSWORD{_sfx}")
+    if _u and _p:
+        AUTH_USERS[_u] = _p
+
+# Only these users may change approval (business manager). Others are editors.
+APPROVERS = {os.environ["AUTH_USERNAME"]}
 if os.environ.get("AUTH_USERNAME_2"):
-    AUTH_USERS[os.environ["AUTH_USERNAME_2"]] = os.environ["AUTH_PASSWORD_2"]
+    APPROVERS.add(os.environ["AUTH_USERNAME_2"])
 
 
 def _create_token(username: str) -> str:
@@ -68,6 +76,12 @@ async def optional_user(authorization: Optional[str] = Header(None)) -> Optional
 async def require_user(user: Optional[str] = Depends(optional_user)) -> str:
     if not user:
         raise HTTPException(status_code=401, detail="You must be logged in to perform this action")
+    return user
+
+
+async def require_approver(user: str = Depends(require_user)) -> str:
+    if user not in APPROVERS:
+        raise HTTPException(status_code=403, detail="Only a Business Manager (158 or IT admin) can change approval")
     return user
 
 
@@ -220,14 +234,14 @@ async def root():
 async def login(body: LoginRequest):
     if AUTH_USERS.get(body.username) != body.password:
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    return {"token": _create_token(body.username), "username": body.username}
+    return {"token": _create_token(body.username), "username": body.username, "can_approve": body.username in APPROVERS}
 
 
 @api_router.get("/auth/me")
 async def auth_me(user: Optional[str] = Depends(optional_user)):
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return {"username": user}
+    return {"username": user, "can_approve": user in APPROVERS}
 
 
 @api_router.get("/config")
@@ -241,7 +255,7 @@ async def get_config():
 
 
 @api_router.post("/purchases/upload-bill")
-async def upload_bill(file: UploadFile = File(...)):
+async def upload_bill(file: UploadFile = File(...), user: str = Depends(require_user)):
     ext = file.filename.split(".")[-1].lower() if "." in file.filename else "bin"
     path = f"{APP_NAME}/bills/{uuid.uuid4()}.{ext}"
     data = await file.read()
@@ -256,10 +270,10 @@ async def get_bill(path: str):
 
 
 @api_router.post("/purchases", response_model=Purchase, status_code=201)
-async def create_purchase(payload: PurchaseCreate, user: Optional[str] = Depends(optional_user)):
+async def create_purchase(payload: PurchaseCreate, user: str = Depends(require_user)):
     _validate_enums(payload)
-    if payload.business_manager_approved and not user:
-        raise HTTPException(status_code=403, detail="Only an authorized user can mark a record as approved")
+    if payload.business_manager_approved and user not in APPROVERS:
+        raise HTTPException(status_code=403, detail="Only a Business Manager (158 or IT admin) can mark a record as approved")
     now = datetime.now(timezone.utc).isoformat()
     data = payload.model_dump()
     purchase_date = _normalize_date(data.pop("purchase_date", None)) or now
@@ -329,6 +343,8 @@ async def update_purchase(purchase_id: str, payload: PurchaseUpdate, user: str =
     existing = await db.purchases.find_one({"id": purchase_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Purchase record not found")
+    if bool(payload.business_manager_approved) != bool(existing.get("business_manager_approved")) and user not in APPROVERS:
+        raise HTTPException(status_code=403, detail="Only a Business Manager (158 or IT admin) can change approval")
     update_doc = payload.model_dump()
     purchase_date = _normalize_date(update_doc.pop("purchase_date", None))
     if purchase_date:
@@ -349,9 +365,7 @@ class BulkApprovalRequest(BaseModel):
 
 
 @api_router.patch("/purchases/approval/bulk")
-async def bulk_approval(body: BulkApprovalRequest, user: Optional[str] = Depends(optional_user)):
-    if not user:
-        raise HTTPException(status_code=403, detail="Only an authorized user can change the approval status")
+async def bulk_approval(body: BulkApprovalRequest, user: str = Depends(require_approver)):
     if not body.ids:
         return {"updated": 0}
     res = await db.purchases.update_many(
@@ -362,9 +376,7 @@ async def bulk_approval(body: BulkApprovalRequest, user: Optional[str] = Depends
 
 
 @api_router.patch("/purchases/{purchase_id}/approval", response_model=Purchase)
-async def set_approval(purchase_id: str, body: ApprovalRequest, user: Optional[str] = Depends(optional_user)):
-    if not user:
-        raise HTTPException(status_code=403, detail="Only an authorized user can change the approval status")
+async def set_approval(purchase_id: str, body: ApprovalRequest, user: str = Depends(require_approver)):
     existing = await db.purchases.find_one({"id": purchase_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Purchase record not found")
@@ -560,9 +572,11 @@ def _parse_date(raw: str) -> Optional[str]:
 
 
 @api_router.post("/purchases/import")
-async def import_purchases(file: UploadFile = File(...)):
+async def import_purchases(file: UploadFile = File(...), user: str = Depends(require_user)):
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=422, detail="Please upload a .csv file")
+
+    can_approve = user in APPROVERS
 
     raw = await file.read()
     try:
@@ -603,7 +617,7 @@ async def import_purchases(file: UploadFile = File(...)):
         for header, key in field_lookup.items():
             val = (row.get(header) or "").strip()
             if key == "approved":
-                rec["business_manager_approved"] = val.lower() in TRUE_VALUES
+                rec["business_manager_approved"] = can_approve and (val.lower() in TRUE_VALUES)
             elif key == "date":
                 if val:
                     purchase_date = _parse_date(val)

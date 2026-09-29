@@ -152,7 +152,7 @@ export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, su
               </Label>
               {!canApprove && (
                 <span className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5" data-testid="approval-locked-hint">
-                  <Lock className="h-3 w-3" /> Log in as the authorized user to change approval
+                  <Lock className="h-3 w-3" /> Only a Business Manager (158 or IT admin) can approve
                 </span>
               )}
             </div>
