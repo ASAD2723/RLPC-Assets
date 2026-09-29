@@ -225,16 +225,16 @@ function App() {
                   className="active:scale-95 transition-transform">
                   <Upload className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Import CSV</span>
                 </Button>
-                <Button onClick={openAdd} data-testid="add-purchase-btn"
-                  className="bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent))]/90 active:scale-95 transition-transform">
-                  <Plus className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Purchase</span>
-                </Button>
               </>
             ) : (
               <Button variant="outline" onClick={() => setLoginOpen(true)} data-testid="login-btn" className="active:scale-95 transition-transform">
                 <LogIn className="h-4 w-4 mr-2" /> Login
               </Button>
             )}
+            <Button onClick={openAdd} data-testid="add-purchase-btn"
+              className="bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent))]/90 active:scale-95 transition-transform">
+              <Plus className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Add Purchase</span>
+            </Button>
           </div>
         </div>
       </header>
@@ -270,7 +270,7 @@ function App() {
             onEdit={openEdit} onDelete={setDeleteTarget}
             canApprove={!!auth?.can_approve} onToggleApprove={handleToggleApprove} togglingId={togglingId}
             selectedIds={selectedIds} onToggleSelect={toggleSelect} onToggleSelectAll={toggleSelectAll}
-            canEdit={!!auth}
+            canEdit={!!auth} canDelete={!!auth?.can_approve}
           />
 
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -305,7 +305,7 @@ function App() {
       <PurchaseForm
         open={formOpen} onOpenChange={(o) => { setFormOpen(o); if (!o) setEditing(null); }}
         onSubmit={handleSubmit} config={config} editing={editing} submitting={submitting}
-        canApprove={!!auth?.can_approve}
+        role={auth ? (auth.can_approve ? "approver" : "editor") : "anonymous"}
       />
 
       <LoginDialog open={loginOpen} onOpenChange={setLoginOpen} onLoggedIn={handleLoggedIn} />

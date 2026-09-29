@@ -14,7 +14,7 @@ const fmt = (iso) => {
   } catch { return iso; }
 };
 
-export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, canApprove, onToggleApprove, togglingId, selectedIds = [], onToggleSelect, onToggleSelectAll, canEdit }) => {
+export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, canApprove, onToggleApprove, togglingId, selectedIds = [], onToggleSelect, onToggleSelectAll, canEdit, canDelete }) => {
   const colCount = canApprove ? 10 : 9;
   const selectedSet = new Set(selectedIds);
   const pageIds = items.map((r) => r.id);
@@ -70,8 +70,8 @@ export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, ca
                   <TableCell className="font-medium">{r.employee_id}</TableCell>
                   <TableCell>{r.employee_name}</TableCell>
                   <TableCell>{r.purchase_type}</TableCell>
-                  <TableCell>{r.payment_mode}</TableCell>
-                  <TableCell>{r.payment_by}</TableCell>
+                  <TableCell>{r.payment_mode || <span className="text-muted-foreground">—</span>}</TableCell>
+                  <TableCell>{r.payment_by || <span className="text-muted-foreground">—</span>}</TableCell>
                   <TableCell>
                     {(() => {
                       const badge = r.business_manager_approved ? (
@@ -103,16 +103,17 @@ export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, ca
                           <Paperclip className="h-4 w-4" />
                         </a>
                       )}
-                      {canEdit ? (
-                        <>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(r)} data-testid={`edit-btn-${r.id}`}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => onDelete(r)} data-testid={`delete-btn-${r.id}`}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </>
-                      ) : (
+                      {canEdit && (
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(r)} data-testid={`edit-btn-${r.id}`}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => onDelete(r)} data-testid={`delete-btn-${r.id}`}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {!canEdit && !canDelete && (
                         <span className="flex items-center gap-1 text-xs text-muted-foreground pr-1" data-testid={`readonly-${r.id}`}>
                           <Lock className="h-3 w-3" /> Login to edit
                         </span>

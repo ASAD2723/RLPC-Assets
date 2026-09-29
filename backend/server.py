@@ -145,8 +145,8 @@ class PurchaseBase(BaseModel):
     employee_id: str = Field(..., min_length=1)
     employee_name: str = Field(..., min_length=1)
     purchase_type: str
-    payment_mode: str
-    payment_by: str
+    payment_mode: str = ""
+    payment_by: str = ""
     business_manager_approved: bool = False
     bill_path: Optional[str] = None
     bill_filename: Optional[str] = None
@@ -171,9 +171,9 @@ class Purchase(PurchaseBase):
 def _validate_enums(p: PurchaseBase):
     if p.purchase_type not in PURCHASE_TYPES:
         raise HTTPException(status_code=422, detail="Invalid Purchase Of value")
-    if p.payment_mode not in PAYMENT_MODES:
+    if p.payment_mode and p.payment_mode not in PAYMENT_MODES:
         raise HTTPException(status_code=422, detail="Invalid Mode of Payment value")
-    if p.payment_by not in PAYMENT_BY:
+    if p.payment_by and p.payment_by not in PAYMENT_BY:
         raise HTTPException(status_code=422, detail="Invalid Payment By value")
 
 
@@ -270,14 +270,40 @@ async def get_bill(path: str):
 
 
 @api_router.post("/purchases", response_model=Purchase, status_code=201)
-async def create_purchase(payload: PurchaseCreate, user: str = Depends(require_user)):
+async def create_purchase(payload: PurchaseCreate, user: Optional[str] = Depends(optional_user)):
     _validate_enums(payload)
-    if payload.business_manager_approved and user not in APPROVERS:
-        raise HTTPException(status_code=403, detail="Only a Business Manager (158 or IT admin) can mark a record as approved")
+    is_approver = user in APPROVERS
+    is_editor = (user in AUTH_USERS) and not is_approver
     now = datetime.now(timezone.utc).isoformat()
-    data = payload.model_dump()
-    purchase_date = _normalize_date(data.pop("purchase_date", None)) or now
-    obj = Purchase(**data, purchase_date=purchase_date, created_at=now, updated_at=now)
+
+    if is_approver:
+        payment_mode = payload.payment_mode
+        payment_by = payload.payment_by
+        approved = payload.business_manager_approved
+        purchase_date = _normalize_date(payload.purchase_date) or now
+        bill_path = payload.bill_path
+        bill_filename = payload.bill_filename
+    elif is_editor:
+        payment_mode = payload.payment_mode
+        payment_by = payload.payment_by
+        approved = False
+        purchase_date = now
+        bill_path = None
+        bill_filename = None
+    else:  # anonymous: only employee id/name/purchase type
+        payment_mode = ""
+        payment_by = ""
+        approved = False
+        purchase_date = now
+        bill_path = None
+        bill_filename = None
+
+    obj = Purchase(
+        employee_id=payload.employee_id, employee_name=payload.employee_name, purchase_type=payload.purchase_type,
+        payment_mode=payment_mode, payment_by=payment_by, business_manager_approved=approved,
+        bill_path=bill_path, bill_filename=bill_filename,
+        purchase_date=purchase_date, created_at=now, updated_at=now,
+    )
     await db.purchases.insert_one(obj.model_dump())
     return obj
 
@@ -339,17 +365,25 @@ async def stats(
 
 @api_router.put("/purchases/{purchase_id}", response_model=Purchase)
 async def update_purchase(purchase_id: str, payload: PurchaseUpdate, user: str = Depends(require_user)):
-    _validate_enums(payload)
     existing = await db.purchases.find_one({"id": purchase_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Purchase record not found")
-    if bool(payload.business_manager_approved) != bool(existing.get("business_manager_approved")) and user not in APPROVERS:
-        raise HTTPException(status_code=403, detail="Only a Business Manager (158 or IT admin) can change approval")
-    update_doc = payload.model_dump()
-    purchase_date = _normalize_date(update_doc.pop("purchase_date", None))
-    if purchase_date:
-        update_doc["purchase_date"] = purchase_date
-    update_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
+
+    if user in APPROVERS:
+        _validate_enums(payload)
+        update_doc = payload.model_dump()
+        purchase_date = _normalize_date(update_doc.pop("purchase_date", None))
+        if purchase_date:
+            update_doc["purchase_date"] = purchase_date
+    else:
+        # Editors may only change Mode of Payment and Payment By.
+        if payload.payment_mode and payload.payment_mode not in PAYMENT_MODES:
+            raise HTTPException(status_code=422, detail="Invalid Mode of Payment value")
+        if payload.payment_by and payload.payment_by not in PAYMENT_BY:
+            raise HTTPException(status_code=422, detail="Invalid Payment By value")
+        update_doc = {"payment_mode": payload.payment_mode, "payment_by": payload.payment_by}
+    update_doc["updated_at"] = now
     await db.purchases.update_one({"id": purchase_id}, {"$set": update_doc})
     merged = {**existing, **update_doc}
     return Purchase(**merged)
@@ -389,7 +423,7 @@ async def set_approval(purchase_id: str, body: ApprovalRequest, user: str = Depe
 
 
 @api_router.delete("/purchases/{purchase_id}")
-async def delete_purchase(purchase_id: str, user: str = Depends(require_user)):
+async def delete_purchase(purchase_id: str, user: str = Depends(require_approver)):
     res = await db.purchases.delete_one({"id": purchase_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Purchase record not found")
