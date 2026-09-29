@@ -1,0 +1,23 @@
+{
+  "summary": "Tested approver-trail feature end-to-end. Added /app/backend/tests/test_approver_trail.py (19 pytest cases): PATCH business/safety approval set trail (by=user, at=ISO) and clear on un-approve; bulk business approval sets/clears trail; create by business records both trails when both approved; create by safety-only records only safety trail (business flag forced false); editor/anonymous cannot approve so no trail; PUT by business flips both trails; PUT by safety-only user records only safety trail; PUT by editor never touches trail; GET /purchases includes 4 trail fields; RBAC regression (editor safety-approve 403, 170 business-approve 403, 170 delete 403, no-token mutations 401); XLSX export 200; stats endpoint 200. All 19 pass. Frontend Playwright: anonymous viewer sees business-trail-{id} and safety-trail-{id} testids with 'by 158 · Sep 29, 2026' / 'by 170 · Sep 29, 2026' text; login as 158 then toggle business ON → trail appears immediately from merged API response; toggle safety ON → safety trail appears; toggle business OFF → business trail line disappears while safety trail remains intact (independence verified).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_approver_trail.py",
+    "/app/test_reports/pytest/approver_trail.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Minor: CSV import path (import_purchases) still creates Purchase without initializing business_approved_by/at/safety_approved_by/at when approved=True from CSV — will default to None so imported approved rows lack a trail. Consider populating from the acting user when can_approve.",
+    "Minor: stats endpoint only counts business_manager_approved. Not part of this iteration but visible gap if UI ever surfaces safety-approval counts.",
+    "Minor: PurchaseTable.colCount uses only canApprove (excludes bulk-select column) but the Safety Approved column always renders; skeleton colspan is slightly off for safety-only viewers (170). Cosmetic only."
+  ],
+  "updated_files": ["/app/backend/tests/test_approver_trail.py", "/app/test_reports/iteration_8.json"],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "100% (anonymous view + dynamic toggle independence verified)"},
+  "test_credentials": "Business/full: 158/Rlpc_974, 'IT admin'/Rlpc_974. Safety: 170/Safety_91, 121/Safety_974. Editors: 16/Roc_974, 76/Pro_974, 122/Proc_974, 126/Purchase_974.",
+  "seed_data_creation": "TEST_TRAIL / TEST_UI_TR* purchase rows created and deleted during tests; no residual test data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_approver_trail.py is the authoritative regression for the trail feature (create/PUT/PATCH single/bulk). Login modal button text is 'Sign in' (not 'Login'); inputs use placeholders 'Enter username' / 'Enter password' (no name attributes). Login toast can briefly overlap top-right buttons — wait ~2-3s after Sign in before clicking. Anonymous can view trail lines (business-trail-{id} / safety-trail-{id}). Backend response from PATCH/PUT includes all 4 trail fields which App.js merges into row state, so UI updates without a re-fetch.",
+  "rca of the issue": "No issues found."
+}
