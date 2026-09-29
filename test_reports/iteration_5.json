@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 5 verified the new RBAC layer (6 hardcoded users, approvers vs editors) end-to-end. Backend: 126/126 pytest pass across 5 files. Existing tests were updated to route mutations through an approver session (POST/PUT/DELETE now require Bearer token). Added new test_rbac.py (36 tests) covering: login for all 6 users returning correct can_approve, /auth/me can_approve, no-token 401 on POST/PUT/DELETE/import/upload-bill, editor create-not-approved 201, editor create-approved 403, editor edit non-approval 200 with purchase_date preserved, editor flip approval 403, editor single/bulk PATCH approval 403, editor delete 200, approver positive path (create-approved, single/bulk approval, flip via PUT), CSV import RBAC (editor forces approved=false, approver honors Approved=Yes). Frontend Playwright verified: logged-out header hides Add/Import and shows Login; rows show 'Login to edit' readonly, no edit/delete/select-all; login as editor '16' shows username, reveals Add + Import, form approval checkbox is DISABLED with hint, no inline approve toggle and no row select-checkbox; editor submits a non-approved record successfully; logout returns to view-only; login as approver '158' enables approval checkbox in form, shows select-all + per-row select and inline approve toggles, bulk action bar appears on selection. Note: while running approver-side tests in parallel the seeded TEST_APR2 remained visible briefly on-screen (that record is cleaned up in-suite by its own finally block); no functional issue.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_auth_bill.py",
+    "/app/backend/tests/test_bulk_approval.py",
+    "/app/backend/tests/test_manual_date_and_auth.py",
+    "/app/backend/tests/test_stats_aggregation.py",
+    "/app/backend/tests/test_rbac.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py: require_approver is layered on top of require_user, so an unauthenticated PATCH approval returns 401 (not 403 as the review request suggests). This is arguably more correct, but callers/tests that expected 403 for missing token had to be adjusted. Consider documenting explicitly: 'missing token=401, wrong role=403'.",
+    "APPROVERS set is derived from AUTH_USERNAME + AUTH_USERNAME_2. If someone later reorders .env or moves the approver to slot 3, they will silently become an editor. Prefer an explicit APPROVER_USERNAMES env var (comma-separated) so approver identity isn't coupled to slot position.",
+    "PurchaseUpdate requires the full record and re-runs enum validation on every field; combined with the approval-preservation logic this is correct today but means a poorly-behaved client that omits business_manager_approved will default it to False and trigger a 403 for editors on already-approved rows. UI resends the current value, so no live bug — worth a comment.",
+    "import_purchases silently forces approved=false for editors; users won't get feedback in the response that some Approved=Yes rows were downgraded. Consider adding a 'downgraded_approved_rows: N' field to the response for transparency.",
+    "server.py file is 685 lines and mixes auth, models, storage, routes and startup. Consider splitting into modules (auth.py, storage.py, routes/purchases.py).",
+    "@app.on_event startup/shutdown still deprecated (carry-over from prior iteration)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_auth_bill.py",
+    "/app/backend/tests/test_bulk_approval.py",
+    "/app/backend/tests/test_manual_date_and_auth.py",
+    "/app/backend/tests/test_stats_aggregation.py",
+    "/app/backend/tests/test_rbac.py"
+  ],
+  "success_rate": { "backend": "100% (126/126)", "frontend": "100% (all requested flows verified)" },
+  "test_credentials": "Approvers: 158/Rlpc_974, 'IT admin'/Rlpc_974 (space in username). Editors: 16/Roc_974, 76/Pro_974, 122/Proc_974, 126/Purchase_974.",
+  "seed_data_creation": "All backend tests create TEST_* records and clean them up in finally/fixture-teardown. UI E2E created and deleted one TEST_UI_<ts> record via the app's own form + delete flow.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend tests split across 5 files under /app/backend/tests/: backend_test.py (CRUD/filters/exports — all mutations use auth_session as approver), test_auth_bill.py (auth flow, bill upload requires token, approval enforcement), test_bulk_approval.py (bulk endpoint with approver/editor/no-token cases), test_manual_date_and_auth.py (manual date + two-user login regression + edit/delete auth), test_stats_aggregation.py (stats pipeline + exports + auth gating; malformed date now uses auth_session), and NEW test_rbac.py (all 6 users, editor scenarios, CSV import RBAC). Key status-code convention: missing token = 401, wrong role (editor on approval routes) = 403. Run: pytest /app/backend/tests/ -v."
+}

@@ -215,8 +215,8 @@ class TestAuthGating:
             assert r.status_code == 200, f"login failed for {uname}: {r.text}"
             assert r.json()["username"] == uname
 
-    def test_create_malformed_date_422(self, anon):
+    def test_create_malformed_date_422(self, auth_session):
         p = _payload("TEST_bad_date", "Mobile Purchase")
         p["purchase_date"] = "not-a-date"
-        r = anon.post(f"{API}/purchases", json=p, timeout=10)
+        r = auth_session.post(f"{API}/purchases", json=p, timeout=10)
         assert r.status_code == 422
