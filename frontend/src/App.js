@@ -40,6 +40,7 @@ function App() {
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [togglingId, setTogglingId] = useState(null);
+  const [togglingSafetyId, setTogglingSafetyId] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkApproving, setBulkApproving] = useState(false);
 
@@ -118,6 +119,20 @@ function App() {
       toast.error(e?.response?.data?.detail || "Failed to save record");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleToggleSafety = async (r) => {
+    setTogglingSafetyId(r.id);
+    const next = !r.safety_team_approved;
+    try {
+      await api.setSafetyApproval(r.id, next);
+      setData((d) => ({ ...d, items: d.items.map((x) => (x.id === r.id ? { ...x, safety_team_approved: next } : x)) }));
+      toast.success(next ? "Safety Team approved." : "Safety approval removed.");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Failed to update safety approval");
+    } finally {
+      setTogglingSafetyId(null);
     }
   };
 
@@ -269,6 +284,7 @@ function App() {
             items={data.items} loading={loading} startIndex={startIndex}
             onEdit={openEdit} onDelete={setDeleteTarget}
             canApprove={!!auth?.can_approve} onToggleApprove={handleToggleApprove} togglingId={togglingId}
+            canSafetyApprove={!!auth?.can_safety_approve} onToggleSafety={handleToggleSafety} togglingSafetyId={togglingSafetyId}
             selectedIds={selectedIds} onToggleSelect={toggleSelect} onToggleSelectAll={toggleSelectAll}
             canEdit={!!auth} canDelete={!!auth?.can_approve}
           />
@@ -305,7 +321,9 @@ function App() {
       <PurchaseForm
         open={formOpen} onOpenChange={(o) => { setFormOpen(o); if (!o) setEditing(null); }}
         onSubmit={handleSubmit} config={config} editing={editing} submitting={submitting}
-        role={auth ? (auth.can_approve ? "approver" : "editor") : "anonymous"}
+        canBusinessApprove={!!auth?.can_approve}
+        canSafetyApprove={!!auth?.can_safety_approve}
+        canPayment={!!auth && (auth.can_approve || !auth.can_safety_approve)}
       />
 
       <LoginDialog open={loginOpen} onOpenChange={setLoginOpen} onLoggedIn={handleLoggedIn} />

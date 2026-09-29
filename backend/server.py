@@ -40,22 +40,34 @@ PAYMENT_MODES = ["Cash", "Credit Card", "Bank Transfer"]
 PAYMENT_BY = ["Jogy Joseph", "Mohammad Omer", "Muhammad Khaleel", "Muhammad Abdullah"]
 
 COLUMNS = ["Employee ID", "Employee Name", "Purchase Of", "Mode of Payment",
-           "Payment By", "Approved by Business Manager", "Date"]
+           "Payment By", "Approved by Business Manager", "Approved by Safety Team", "Date"]
 
 # ----- Auth (hardcoded users, RBAC: approver vs editor) -----
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALG = "HS256"
 AUTH_USERS = {}
-for _sfx in ["", "_2", "_3", "_4", "_5", "_6"]:
+for _sfx in ["", "_2", "_3", "_4", "_5", "_6", "_7", "_8"]:
     _u = os.environ.get(f"AUTH_USERNAME{_sfx}")
     _p = os.environ.get(f"AUTH_PASSWORD{_sfx}")
     if _u and _p:
         AUTH_USERS[_u] = _p
 
-# Only these users may change approval (business manager). Others are editors.
-APPROVERS = {os.environ["AUTH_USERNAME"]}
-if os.environ.get("AUTH_USERNAME_2"):
-    APPROVERS.add(os.environ["AUTH_USERNAME_2"])
+# Business Manager approvers (full access): slots 1-2 (158, IT admin)
+APPROVERS = set()
+for _sfx in ["", "_2"]:
+    _u = os.environ.get(f"AUTH_USERNAME{_sfx}")
+    if _u:
+        APPROVERS.add(_u)
+
+# Safety Team approvers: slots 7-8 (170, 121) plus the business approvers
+SAFETY_APPROVERS = set(APPROVERS)
+for _sfx in ["_7", "_8"]:
+    _u = os.environ.get(f"AUTH_USERNAME{_sfx}")
+    if _u:
+        SAFETY_APPROVERS.add(_u)
+
+# Payment editors: everyone else logged in (16, 76, 122, 126)
+EDITORS = set(AUTH_USERS) - APPROVERS - SAFETY_APPROVERS
 
 
 def _create_token(username: str) -> str:
@@ -82,6 +94,12 @@ async def require_user(user: Optional[str] = Depends(optional_user)) -> str:
 async def require_approver(user: str = Depends(require_user)) -> str:
     if user not in APPROVERS:
         raise HTTPException(status_code=403, detail="Only a Business Manager (158 or IT admin) can change approval")
+    return user
+
+
+async def require_safety_approver(user: str = Depends(require_user)) -> str:
+    if user not in SAFETY_APPROVERS:
+        raise HTTPException(status_code=403, detail="Only the Safety Team (170, 121, 158 or IT admin) can change safety approval")
     return user
 
 
@@ -148,6 +166,7 @@ class PurchaseBase(BaseModel):
     payment_mode: str = ""
     payment_by: str = ""
     business_manager_approved: bool = False
+    safety_team_approved: bool = False
     bill_path: Optional[str] = None
     bill_filename: Optional[str] = None
 
@@ -234,14 +253,15 @@ async def root():
 async def login(body: LoginRequest):
     if AUTH_USERS.get(body.username) != body.password:
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    return {"token": _create_token(body.username), "username": body.username, "can_approve": body.username in APPROVERS}
+    return {"token": _create_token(body.username), "username": body.username,
+            "can_approve": body.username in APPROVERS, "can_safety_approve": body.username in SAFETY_APPROVERS}
 
 
 @api_router.get("/auth/me")
 async def auth_me(user: Optional[str] = Depends(optional_user)):
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return {"username": user, "can_approve": user in APPROVERS}
+    return {"username": user, "can_approve": user in APPROVERS, "can_safety_approve": user in SAFETY_APPROVERS}
 
 
 @api_router.get("/config")
@@ -272,35 +292,28 @@ async def get_bill(path: str):
 @api_router.post("/purchases", response_model=Purchase, status_code=201)
 async def create_purchase(payload: PurchaseCreate, user: Optional[str] = Depends(optional_user)):
     _validate_enums(payload)
-    is_approver = user in APPROVERS
-    is_editor = (user in AUTH_USERS) and not is_approver
+    is_business = user in APPROVERS
+    is_safety = user in SAFETY_APPROVERS
+    can_payment = is_business or (user in EDITORS)
     now = datetime.now(timezone.utc).isoformat()
 
-    if is_approver:
-        payment_mode = payload.payment_mode
-        payment_by = payload.payment_by
-        approved = payload.business_manager_approved
+    payment_mode = payload.payment_mode if can_payment else ""
+    payment_by = payload.payment_by if can_payment else ""
+    business_approved = payload.business_manager_approved if is_business else False
+    safety_approved = payload.safety_team_approved if is_safety else False
+    if is_business:
         purchase_date = _normalize_date(payload.purchase_date) or now
         bill_path = payload.bill_path
         bill_filename = payload.bill_filename
-    elif is_editor:
-        payment_mode = payload.payment_mode
-        payment_by = payload.payment_by
-        approved = False
-        purchase_date = now
-        bill_path = None
-        bill_filename = None
-    else:  # anonymous: only employee id/name/purchase type
-        payment_mode = ""
-        payment_by = ""
-        approved = False
+    else:
         purchase_date = now
         bill_path = None
         bill_filename = None
 
     obj = Purchase(
         employee_id=payload.employee_id, employee_name=payload.employee_name, purchase_type=payload.purchase_type,
-        payment_mode=payment_mode, payment_by=payment_by, business_manager_approved=approved,
+        payment_mode=payment_mode, payment_by=payment_by,
+        business_manager_approved=business_approved, safety_team_approved=safety_approved,
         bill_path=bill_path, bill_filename=bill_filename,
         purchase_date=purchase_date, created_at=now, updated_at=now,
     )
@@ -376,13 +389,15 @@ async def update_purchase(purchase_id: str, payload: PurchaseUpdate, user: str =
         purchase_date = _normalize_date(update_doc.pop("purchase_date", None))
         if purchase_date:
             update_doc["purchase_date"] = purchase_date
-    else:
-        # Editors may only change Mode of Payment and Payment By.
+    elif user in EDITORS:
         if payload.payment_mode and payload.payment_mode not in PAYMENT_MODES:
             raise HTTPException(status_code=422, detail="Invalid Mode of Payment value")
         if payload.payment_by and payload.payment_by not in PAYMENT_BY:
             raise HTTPException(status_code=422, detail="Invalid Payment By value")
         update_doc = {"payment_mode": payload.payment_mode, "payment_by": payload.payment_by}
+    else:
+        # Safety-only approvers (170, 121) may only change Safety Team approval.
+        update_doc = {"safety_team_approved": bool(payload.safety_team_approved)}
     update_doc["updated_at"] = now
     await db.purchases.update_one({"id": purchase_id}, {"$set": update_doc})
     merged = {**existing, **update_doc}
@@ -422,6 +437,19 @@ async def set_approval(purchase_id: str, body: ApprovalRequest, user: str = Depe
     return Purchase(**{**existing, **update_doc})
 
 
+@api_router.patch("/purchases/{purchase_id}/safety-approval", response_model=Purchase)
+async def set_safety_approval(purchase_id: str, body: ApprovalRequest, user: str = Depends(require_safety_approver)):
+    existing = await db.purchases.find_one({"id": purchase_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Purchase record not found")
+    update_doc = {
+        "safety_team_approved": body.approved,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.purchases.update_one({"id": purchase_id}, {"$set": update_doc})
+    return Purchase(**{**existing, **update_doc})
+
+
 @api_router.delete("/purchases/{purchase_id}")
 async def delete_purchase(purchase_id: str, user: str = Depends(require_approver)):
     res = await db.purchases.delete_one({"id": purchase_id})
@@ -446,6 +474,7 @@ def _row_values(d):
         d.get("payment_mode", ""),
         d.get("payment_by", ""),
         "Approved" if d.get("business_manager_approved") else "Not Approved",
+        "Approved" if d.get("safety_team_approved") else "Not Approved",
         _fmt_date(d.get("purchase_date", "")),
     ]
 
@@ -487,7 +516,7 @@ async def export_xlsx(
         for col_idx in range(1, len(COLUMNS) + 1):
             ws.cell(row=r, column=col_idx).border = border
 
-    widths = [16, 24, 18, 18, 20, 26, 20]
+    widths = [16, 24, 18, 18, 20, 26, 26, 20]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
     ws.freeze_panes = "A2"
@@ -538,7 +567,7 @@ async def export_pdf(
     for d in docs:
         table_data.append([Paragraph(str(v), cell_style) for v in _row_values(d)])
 
-    col_widths = [30 * mm, 45 * mm, 32 * mm, 32 * mm, 40 * mm, 42 * mm, 36 * mm]
+    col_widths = [26 * mm, 38 * mm, 28 * mm, 28 * mm, 32 * mm, 36 * mm, 34 * mm, 28 * mm]
     tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
     tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0A0A0A")),

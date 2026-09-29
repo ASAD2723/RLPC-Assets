@@ -15,13 +15,13 @@ const EMPTY = {
   payment_mode: "",
   payment_by: "",
   business_manager_approved: false,
+  safety_team_approved: false,
 };
 
-export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, submitting, role = "anonymous" }) => {
-  const isApprover = role === "approver";
-  const isEditor = role === "editor";
-  const showPayment = isApprover || isEditor;
-  const basicsDisabled = !!editing && isEditor;
+export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, submitting, canBusinessApprove = false, canSafetyApprove = false, canPayment = false }) => {
+  const showPayment = canPayment;
+  const showFull = canBusinessApprove;
+  const basicsDisabled = !!editing && !canBusinessApprove;
   const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState({});
   const [billFile, setBillFile] = useState(null);
@@ -38,6 +38,7 @@ export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, su
           payment_mode: editing.payment_mode,
           payment_by: editing.payment_by,
           business_manager_approved: !!editing.business_manager_approved,
+          safety_team_approved: !!editing.safety_team_approved,
         });
       } else {
         setForm(EMPTY);
@@ -56,7 +57,7 @@ export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, su
     if (!form.employee_id.trim()) e.employee_id = "Employee ID is required";
     if (!form.employee_name.trim()) e.employee_name = "Employee Name is required";
     if (!form.purchase_type) e.purchase_type = "Please select Purchase Of";
-    if (isApprover && !datePart) e.purchase_date = "Please select a purchase date";
+    if (canBusinessApprove && !datePart) e.purchase_date = "Please select a purchase date";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -144,7 +145,7 @@ export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, su
             </div>
           )}
 
-          {isApprover && (
+          {canBusinessApprove && (
             <div className="flex items-center gap-3 rounded-md border border-border bg-secondary/50 p-3">
               <Checkbox id="approved" data-testid="checkbox-approved" checked={form.business_manager_approved}
                 onCheckedChange={(v) => set("business_manager_approved", !!v)} />
@@ -152,7 +153,15 @@ export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, su
             </div>
           )}
 
-          {isApprover && (
+          {canSafetyApprove && (
+            <div className="flex items-center gap-3 rounded-md border border-border bg-secondary/50 p-3">
+              <Checkbox id="safety_approved" data-testid="checkbox-safety-approved" checked={form.safety_team_approved}
+                onCheckedChange={(v) => set("safety_team_approved", !!v)} />
+              <Label htmlFor="safety_approved" className="cursor-pointer font-medium">Approved by Safety Team</Label>
+            </div>
+          )}
+
+          {showFull && (
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5"><Paperclip className="h-3.5 w-3.5" /> Bill / Receipt <span className="text-xs text-muted-foreground">(optional)</span></Label>
               {billFile ? (
@@ -174,7 +183,7 @@ export const PurchaseForm = ({ open, onOpenChange, onSubmit, config, editing, su
             </div>
           )}
 
-          {isApprover && (
+          {showFull && (
             <div className="space-y-1.5">
               <Label htmlFor="purchase_date">Purchase Date <span className="text-destructive">*</span></Label>
               <Input id="purchase_date" type="date" data-testid="input-purchase-date"

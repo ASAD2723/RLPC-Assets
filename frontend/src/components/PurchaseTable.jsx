@@ -14,8 +14,8 @@ const fmt = (iso) => {
   } catch { return iso; }
 };
 
-export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, canApprove, onToggleApprove, togglingId, selectedIds = [], onToggleSelect, onToggleSelectAll, canEdit, canDelete }) => {
-  const colCount = canApprove ? 10 : 9;
+export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, canApprove, onToggleApprove, togglingId, canSafetyApprove, onToggleSafety, togglingSafetyId, selectedIds = [], onToggleSelect, onToggleSelectAll, canEdit, canDelete }) => {
+  const colCount = canApprove ? 11 : 10;
   const selectedSet = new Set(selectedIds);
   const pageIds = items.map((r) => r.id);
   const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedSet.has(id));
@@ -36,7 +36,8 @@ export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, ca
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Purchase Of</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Mode of Payment</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Payment By</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">Approved</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wide">Business Approved</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wide">Safety Approved</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Date</TableHead>
               <TableHead className="text-right text-xs font-semibold uppercase tracking-wide">Actions</TableHead>
             </TableRow>
@@ -87,6 +88,27 @@ export const PurchaseTable = ({ items, loading, startIndex, onEdit, onDelete, ca
                       return (
                         <button type="button" data-testid={`approve-toggle-${r.id}`} disabled={togglingId === r.id}
                           onClick={() => onToggleApprove(r)} title="Click to toggle approval"
+                          className="rounded-md transition-transform hover:opacity-80 active:scale-95 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent))]">
+                          {badge}
+                        </button>
+                      );
+                    })()}
+                  </TableCell>
+                  <TableCell>
+                    {(() => {
+                      const badge = r.safety_team_approved ? (
+                        <Badge className="bg-[hsl(var(--success))] text-white hover:bg-[hsl(var(--success))] gap-1" data-testid={`safety-approved-${r.id}`}>
+                          <CheckCircle2 className="h-3 w-3" /> Approved
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="gap-1 text-muted-foreground" data-testid={`safety-not-approved-${r.id}`}>
+                          <XCircle className="h-3 w-3" /> Not Approved
+                        </Badge>
+                      );
+                      if (!canSafetyApprove) return badge;
+                      return (
+                        <button type="button" data-testid={`safety-toggle-${r.id}`} disabled={togglingSafetyId === r.id}
+                          onClick={() => onToggleSafety(r)} title="Click to toggle safety approval"
                           className="rounded-md transition-transform hover:opacity-80 active:scale-95 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent))]">
                           {badge}
                         </button>
