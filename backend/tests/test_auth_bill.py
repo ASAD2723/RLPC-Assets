@@ -77,11 +77,16 @@ class TestAuth:
         assert d["can_approve"] is True
 
 
-# ----- Approval enforcement (with token = approver) -----
+# ----- Anonymous create + Approval enforcement -----
 class TestApprovalEnforcement:
-    def test_create_approved_without_token_401(self, anon):
+    def test_anon_create_approved_true_is_ignored_201(self, anon, auth_headers):
+        # Anonymous creates now allowed but payment/approval ignored
         r = anon.post(f"{API}/purchases", json=_payload("TEST_APR1", approved=True), timeout=10)
-        assert r.status_code == 401
+        assert r.status_code == 201, r.text
+        d = r.json()
+        assert d["business_manager_approved"] is False
+        assert d["payment_mode"] == "" and d["payment_by"] == ""
+        requests.delete(f"{API}/purchases/{d['id']}", headers=auth_headers, timeout=10)
 
     def test_create_approved_with_token_201(self, auth_headers):
         r = requests.post(f"{API}/purchases", json=_payload("TEST_APR2", approved=True), headers=auth_headers, timeout=10)
@@ -90,9 +95,10 @@ class TestApprovalEnforcement:
         assert r.json()["business_manager_approved"] is True
         requests.delete(f"{API}/purchases/{pid}", headers=auth_headers, timeout=10)
 
-    def test_create_not_approved_without_token_401(self, anon):
+    def test_anon_create_not_approved_201(self, anon, auth_headers):
         r = anon.post(f"{API}/purchases", json=_payload("TEST_APR3", approved=False), timeout=10)
-        assert r.status_code == 401
+        assert r.status_code == 201, r.text
+        requests.delete(f"{API}/purchases/{r.json()['id']}", headers=auth_headers, timeout=10)
 
     def test_create_safety_shoes_with_token_201(self, auth_headers):
         r = requests.post(f"{API}/purchases", json=_payload("TEST_APR4", approved=False, ptype="Safety Shoes"), headers=auth_headers, timeout=10)

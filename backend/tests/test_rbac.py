@@ -86,10 +86,40 @@ class TestSixUserLogin:
         assert d["can_approve"] == ((user, pw) in APPROVERS)
 
 
-# ----- Unauthenticated mutations must be 401 -----
+# ----- Unauthenticated mutations -----
 class TestNoTokenMutations:
-    def test_post_purchase_401(self):
-        r = requests.post(f"{API}/purchases", json=_payload("TEST_NO1"), timeout=10)
+    def test_anon_post_purchase_201_ignores_payment_and_approval(self):
+        # Anonymous can add basics only; payment/approval fields must be ignored
+        body = _payload("TEST_ANON1", approved=True)  # tries to sneak approval + payment
+        r = requests.post(f"{API}/purchases", json=body, timeout=10)
+        assert r.status_code == 201, r.text
+        d = r.json()
+        assert d["employee_id"] == "TEST_ANON1"
+        assert d["payment_mode"] == ""
+        assert d["payment_by"] == ""
+        assert d["business_manager_approved"] is False
+        assert d["purchase_date"]  # auto set
+        # cleanup via approver
+        tok = _login("158", "Rlpc_974").json()["token"]
+        requests.delete(f"{API}/purchases/{d['id']}", headers=_headers(tok), timeout=10)
+
+    def test_anon_post_purchase_basics_only_201(self):
+        body = {"employee_id": "TEST_ANON2", "employee_name": "TEST_AnonUser", "purchase_type": "Safety Shoes"}
+        r = requests.post(f"{API}/purchases", json=body, timeout=10)
+        assert r.status_code == 201, r.text
+        d = r.json()
+        assert d["purchase_type"] == "Safety Shoes"
+        assert d["payment_mode"] == "" and d["payment_by"] == ""
+        assert d["business_manager_approved"] is False
+        tok = _login("158", "Rlpc_974").json()["token"]
+        requests.delete(f"{API}/purchases/{d['id']}", headers=_headers(tok), timeout=10)
+
+    def test_anon_single_approval_401(self):
+        r = requests.patch(f"{API}/purchases/anything/approval", json={"approved": True}, timeout=10)
+        assert r.status_code == 401
+
+    def test_anon_bulk_approval_401(self):
+        r = requests.patch(f"{API}/purchases/approval/bulk", json={"ids": ["x"], "approved": True}, timeout=10)
         assert r.status_code == 401
 
     def test_put_purchase_401(self):
@@ -113,46 +143,79 @@ class TestNoTokenMutations:
 
 # ----- Editor RBAC on purchases -----
 class TestEditorPurchases:
-    def test_editor_create_not_approved_201(self, editor_token):
+    def test_editor_create_not_approved_201(self, editor_token, approver_token):
         r = requests.post(f"{API}/purchases", json=_payload("TEST_ED_C1", approved=False), headers=_headers(editor_token), timeout=10)
         assert r.status_code == 201, r.text
         assert r.json()["business_manager_approved"] is False
         pid = r.json()["id"]
-        # editor delete should work
+        # editor delete should NOT work anymore (approver-only)
         d = requests.delete(f"{API}/purchases/{pid}", headers=_headers(editor_token), timeout=10)
-        assert d.status_code == 200
+        assert d.status_code == 403
+        # cleanup with approver
+        requests.delete(f"{API}/purchases/{pid}", headers=_headers(approver_token), timeout=10)
 
-    def test_editor_create_approved_403(self, editor_token):
+    def test_editor_create_approved_forced_false_201(self, editor_token, approver_token):
+        # Editor sending approved=true should still create (201) but approval forced false
         r = requests.post(f"{API}/purchases", json=_payload("TEST_ED_C2", approved=True), headers=_headers(editor_token), timeout=10)
-        assert r.status_code == 403
+        assert r.status_code == 201, r.text
+        d = r.json()
+        assert d["business_manager_approved"] is False
+        requests.delete(f"{API}/purchases/{d['id']}", headers=_headers(approver_token), timeout=10)
 
-    def test_editor_edit_non_approval_200_preserves_date(self, editor_token, approver_token):
-        # Create with approver so we have known state
+    def test_editor_edit_only_payment_applied_basics_and_approval_preserved(self, editor_token, approver_token):
+        # Create with approver so we have known state (with approval=True and specific date)
         chosen = "2026-04-10T00:00:00"
-        p = _payload("TEST_ED_E1", approved=False)
+        p = _payload("TEST_ED_E1", approved=True)
         p["purchase_date"] = chosen
         r = requests.post(f"{API}/purchases", json=p, headers=_headers(approver_token), timeout=10)
         pid = r.json()["id"]
         try:
-            # Editor edits non-approval field WITHOUT sending purchase_date
-            body = _payload("TEST_ED_E1", approved=False, pmode="Credit Card", pby="Mohammad Omer")
+            # Editor tries to change EVERYTHING including basics + approval; only payment_mode/payment_by should apply
+            body = {
+                "employee_id": "TEST_HACKED",
+                "employee_name": "TEST_Hacked",
+                "purchase_type": "Tech Device",
+                "payment_mode": "Credit Card",
+                "payment_by": "Mohammad Omer",
+                "business_manager_approved": False,
+                "purchase_date": "2020-01-01T00:00:00",
+            }
             r2 = requests.put(f"{API}/purchases/{pid}", json=body, headers=_headers(editor_token), timeout=10)
             assert r2.status_code == 200, r2.text
             d = r2.json()
+            # Payment updated
             assert d["payment_mode"] == "Credit Card"
             assert d["payment_by"] == "Mohammad Omer"
-            assert d["purchase_date"] == chosen  # preserved
-            assert d["business_manager_approved"] is False
+            # Basics preserved
+            assert d["employee_id"] == "TEST_ED_E1"
+            assert d["employee_name"] != "TEST_Hacked"
+            assert d["purchase_type"] == "Mobile Purchase"
+            # Approval preserved (was True)
+            assert d["business_manager_approved"] is True
+            # Date preserved
+            assert d["purchase_date"] == chosen
         finally:
             requests.delete(f"{API}/purchases/{pid}", headers=_headers(approver_token), timeout=10)
 
-    def test_editor_flip_approval_403(self, editor_token, approver_token):
+    def test_editor_put_invalid_payment_mode_422(self, editor_token, approver_token):
+        r = requests.post(f"{API}/purchases", json=_payload("TEST_ED_INV"), headers=_headers(approver_token), timeout=10)
+        pid = r.json()["id"]
+        try:
+            body = _payload("TEST_ED_INV", pmode="Crypto")
+            r2 = requests.put(f"{API}/purchases/{pid}", json=body, headers=_headers(editor_token), timeout=10)
+            assert r2.status_code == 422
+        finally:
+            requests.delete(f"{API}/purchases/{pid}", headers=_headers(approver_token), timeout=10)
+
+    def test_editor_put_approval_change_silently_preserved(self, editor_token, approver_token):
+        # Original approved=False; editor sends approved=True -> 200, but approval stays false
         r = requests.post(f"{API}/purchases", json=_payload("TEST_ED_F1", approved=False), headers=_headers(approver_token), timeout=10)
         pid = r.json()["id"]
         try:
             body = _payload("TEST_ED_F1", approved=True)
             r2 = requests.put(f"{API}/purchases/{pid}", json=body, headers=_headers(editor_token), timeout=10)
-            assert r2.status_code == 403
+            assert r2.status_code == 200
+            assert r2.json()["business_manager_approved"] is False
         finally:
             requests.delete(f"{API}/purchases/{pid}", headers=_headers(approver_token), timeout=10)
 
@@ -169,11 +232,14 @@ class TestEditorPurchases:
         r = requests.patch(f"{API}/purchases/approval/bulk", json={"ids": ["x"], "approved": True}, headers=_headers(editor_token), timeout=10)
         assert r.status_code == 403
 
-    def test_editor_delete_200(self, editor_token):
+    def test_editor_delete_403(self, editor_token, approver_token):
         r = requests.post(f"{API}/purchases", json=_payload("TEST_ED_D1"), headers=_headers(editor_token), timeout=10)
         pid = r.json()["id"]
-        r2 = requests.delete(f"{API}/purchases/{pid}", headers=_headers(editor_token), timeout=10)
-        assert r2.status_code == 200
+        try:
+            r2 = requests.delete(f"{API}/purchases/{pid}", headers=_headers(editor_token), timeout=10)
+            assert r2.status_code == 403
+        finally:
+            requests.delete(f"{API}/purchases/{pid}", headers=_headers(approver_token), timeout=10)
 
 
 # ----- Approver RBAC (positive path) -----

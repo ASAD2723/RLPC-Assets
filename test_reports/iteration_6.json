@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 6 verified the revised RBAC access model (anonymous add allowed; editor edit-only-payment; approver full). Backend: 130/130 pytest pass across 5 files after updating anon/editor tests. Frontend Playwright verified anonymous, editor '16', and approver '158' flows end-to-end. New/updated backend tests: anon POST returns 201 with payment_mode='', payment_by='', business_manager_approved=False even when the request tries to sneak them in; anon POST with only 3 basic fields also 201; anon PATCH single/bulk approval 401; anon PUT/DELETE 401; anon upload-bill/import 401. Editor create with approved=true now returns 201 (forced false); editor PUT applies only payment_mode/payment_by while employee_id/name/purchase_type/business_manager_approved/purchase_date are preserved; editor PUT with an invalid payment_mode returns 422; editor PUT trying to flip approval returns 200 but approval stays False; editor DELETE now 403; single/bulk PATCH approval 403 for editor. Approver positive path (create-approved, single/bulk approval, flip via PUT, delete) all 200/201. CSV import RBAC unchanged: editor forces approved=false, approver honors Yes. Frontend: ANON header shows Add Purchase + Login (no Import); Add form shows only Employee ID/Name/Purchase Of, no payment/approval/date/bill; submit created a record showing '—' for Mode/Payment By, 'Not Approved', 'Login to edit'. EDITOR '16': import visible, no delete/select-all/inline-approve on rows; edit form has Employee ID/Name disabled, Payment Mode + Payment By enabled, no approval/date/bill. APPROVER '158': select-all, per-row delete + inline approve toggle, bulk action bar with Approve selected; form shows approval checkbox, manual date, bill upload, employee fields enabled. Toggled inline approval succeeded; bulk-approve bar rendered; cleanup deletes succeeded.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_auth_bill.py",
+    "/app/backend/tests/test_bulk_approval.py",
+    "/app/backend/tests/test_manual_date_and_auth.py",
+    "/app/backend/tests/test_stats_aggregation.py",
+    "/app/backend/tests/test_rbac.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py update_purchase: editor branch validates payment_mode/payment_by individually inline instead of reusing _validate_enums; consider extracting a small helper to keep validation logic DRY.",
+    "PurchaseUpdate/PurchaseCreate still expect the full PurchaseBase shape (employee_id/employee_name/purchase_type required). Anonymous callers who forget purchase_type will get 422 — this is enforced but the anonymous-only frontend uses Select so it is fine. Consider a dedicated AnonymousPurchaseCreate model that only accepts basics to make the API self-documenting.",
+    "create_purchase: an anonymous caller who sends business_manager_approved=true silently gets it overridden to false with no warning. Consider returning a 200/201 with a warning field, or an explicit 422 when unauthenticated callers submit privileged fields, so scripts can detect misuse.",
+    "APPROVERS set is still derived from AUTH_USERNAME + AUTH_USERNAME_2 slots. Reordering .env silently reclassifies users; prefer an explicit APPROVER_USERNAMES env var.",
+    "server.py file is ~720 lines (auth, storage, routes, models, startup, import). Consider splitting into modules (auth.py, storage.py, routes/purchases.py, csv_import.py).",
+    "@app.on_event startup/shutdown remain deprecated in FastAPI 0.110+.",
+    "CSV import silently downgrades editor's Approved=Yes rows to false; response does not communicate how many rows were downgraded. Consider adding 'downgraded_approved_rows' to the import response for transparency."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_rbac.py",
+    "/app/backend/tests/test_auth_bill.py",
+    "/app/backend/tests/test_manual_date_and_auth.py"
+  ],
+  "success_rate": { "backend": "100% (130/130)", "frontend": "100% (all three role flows verified)" },
+  "test_credentials": "Approvers: 158/Rlpc_974, 'IT admin'/Rlpc_974 (space in username). Editors: 16/Roc_974, 76/Pro_974, 122/Proc_974, 126/Purchase_974. Anonymous = no token.",
+  "seed_data_creation": "All backend tests create TEST_* records and clean up in finally/fixture-teardown. UI E2E created 2 anon records and deleted them via approver flow.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Access model: anonymous can POST /api/purchases with basics (payment/approval ignored, date auto), no PUT/DELETE/PATCH/import/upload. Editors: full POST (approval forced false), PUT only touches payment_mode/payment_by (basics + approval + date preserved), no delete, no PATCH approval, no bulk approve. Approvers (158, 'IT admin'): full CRUD, single+bulk PATCH approval. Status conventions: missing token=401, wrong role=403, invalid payload=422. Backend tests are split across 5 files; run: pytest /app/backend/tests/ -v. Note: xdist parallel run seeds and deletes TEST_* rows continuously; if debugging cleanup, run with -p no:xdist. Frontend: login dialog can transiently be blocked by a toast right after logout — add ~2s wait before re-clicking Login."
+}

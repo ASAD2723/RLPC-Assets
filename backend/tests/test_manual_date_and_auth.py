@@ -145,9 +145,13 @@ class TestEditDeleteAuth:
 
 # ----- Approval still enforced -----
 class TestApprovalAuth:
-    def test_create_approved_no_token_401(self):
+    def test_create_anon_approved_ignored_201(self, h_admin):
+        # Anonymous can now create; approval forced false
         r = requests.post(f"{API}/purchases", json=_payload(employee_id="TEST_APV_NA", business_manager_approved=True), timeout=10)
-        assert r.status_code == 401
+        assert r.status_code == 201
+        d = r.json()
+        assert d["business_manager_approved"] is False
+        requests.delete(f"{API}/purchases/{d['id']}", headers=h_admin, timeout=10)
 
     def test_create_approved_with_approver_201(self, h_admin):
         r = requests.post(f"{API}/purchases", json=_payload(employee_id="TEST_APV_OK", business_manager_approved=True), headers=h_admin, timeout=10)
